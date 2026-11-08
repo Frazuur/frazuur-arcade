@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Frazuur Arcade</title>
+<meta name="description" content="Silly little browser games. Pick one and play, no download.">
+<meta name="theme-color" content="#1d1220">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chewy&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d1220;--bg2:#2a1a2e;--ink:#fff4ea;--muted:#d9c3cf;--gold:#f2c230;--pink:#f0a3bd;--line:rgba(255,244,234,.12)}
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg)}
+body{min-height:100vh;min-height:100dvh;background:var(--bg);color:var(--ink);font-family:Nunito,system-ui,sans-serif;line-height:1.5;padding:max(28px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+::selection{background:var(--pink);color:var(--bg)}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:4px;border-radius:14px}
+main{max-width:1080px;margin:0 auto}
+header{padding:28px 0 36px}
+h1{font-family:Chewy,cursive;font-weight:400;font-size:clamp(52px,10vw,104px);line-height:.95;letter-spacing:.01em;color:var(--gold);text-shadow:0 5px 0 #8a5a10,0 14px 32px rgba(0,0,0,.5)}
+header p{margin-top:14px;font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:44ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:22px}
+.game{position:relative;display:flex;flex-direction:column;text-decoration:none;background:var(--bg2);border-radius:22px;overflow:hidden;box-shadow:0 2px 0 var(--line) inset,0 16px 40px rgba(0,0,0,.35);transition:transform .35s cubic-bezier(.16,1,.3,1),box-shadow .35s cubic-bezier(.16,1,.3,1)}
+.game:hover{transform:translateY(-6px) rotate(-.6deg);box-shadow:0 2px 0 var(--line) inset,0 26px 50px rgba(0,0,0,.45)}
+.game:active{transform:translateY(-2px) scale(.99)}
+.cover{aspect-ratio:16/10;overflow:hidden;background:#cf7392}
+.cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.16,1,.3,1)}
+.game:hover .cover img{transform:scale(1.05)}
+.body{padding:18px 20px 20px;display:flex;flex-direction:column;gap:8px;flex:1}
+.game h2{font-family:Chewy,cursive;font-weight:400;font-size:34px;line-height:1;color:var(--ink)}
+.game p{color:var(--muted);font-size:16px}
+.meta{margin-top:auto;padding-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:var(--muted)}
+.play{font-family:Chewy,cursive;font-size:20px;color:var(--bg);background:var(--gold);padding:6px 18px;border-radius:999px;box-shadow:0 3px 0 #8a5a10}
+.top{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-size:15px}
+.top ol{list-style:none;padding:0;display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.top li{display:flex;justify-content:space-between;gap:10px}
+.top li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top b{font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
+.top h3{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pink)}
+.soon{display:grid;place-items:center;min-height:260px;border:2px dashed var(--line);border-radius:22px;color:var(--muted);text-align:center;padding:24px;font-size:17px}
+.soon strong{display:block;font-family:Chewy,cursive;font-weight:400;font-size:28px;color:var(--ink);margin-bottom:4px}
+.soon a{color:var(--gold);font-weight:800}
+footer{margin-top:48px;color:var(--muted);font-size:14px;text-align:center}
+
+/* title doubles as the theme switch */
+#brand{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:.18em;border-radius:14px;-webkit-tap-highlight-color:transparent}
+#brand:active h1{transform:scale(.97)}
+h1{transition:color .5s,text-shadow .5s,transform .2s}
+.bow{width:clamp(40px,7vw,70px);height:clamp(28px,5vw,48px);flex:none;transform:scale(0) rotate(-40deg);transition:transform .5s cubic-bezier(.34,1.56,.64,1)}
+body,.game,.play,.soon,.ideas,input,textarea,button{transition:background-color .5s,color .5s,border-color .5s,box-shadow .5s}
+
+/* ideas box */
+.ideas{margin-top:40px;background:var(--bg2);border-radius:22px;padding:24px 20px;box-shadow:0 2px 0 var(--line) inset}
+.ideas h2{font-family:Chewy,cursive;font-weight:400;font-size:clamp(28px,5vw,36px);line-height:1.05}
+.ideas>p{color:var(--muted);margin-top:4px}
+.ideas form{display:grid;gap:12px;margin-top:16px;max-width:620px}
+.ideas label{font-size:14px;font-weight:800;color:var(--muted);display:grid;gap:6px}
+.ideas textarea,.ideas input{font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:2px solid var(--line);border-radius:14px;padding:12px 14px;width:100%}
+.ideas textarea{min-height:110px;resize:vertical}
+.ideas textarea:focus,.ideas input:focus{outline:none;border-color:var(--gold)}
+.ideas .row{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.ideas button{font-family:Chewy,cursive;font-size:22px;color:var(--bg);background:var(--gold);border:0;border-radius:999px;padding:8px 26px;box-shadow:0 3px 0 var(--gold-dark);cursor:pointer}
+.ideas button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--gold-dark)}
+.ideas button:disabled{opacity:.6;cursor:wait}
+#idea-status{font-weight:700}
+
+/* Meggy's Arcade: pink, bows and hearts */
+:root{--field:rgba(0,0,0,.25);--gold-dark:#8a5a10}
+html.meggy{--bg:#ffe3ee;--bg2:#fff8fb;--ink:#5b1f3d;--muted:#8f4a6a;--gold:#e5306f;--gold-dark:#a3164a;--pink:#e5306f;--line:rgba(229,48,111,.18);--field:#fff}
+html.meggy body{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M30 38c-4-6-14-3-12 5 1 5 12 11 12 11s11-6 12-11c2-8-8-11-12-5z' fill='%23ffc2d8'/%3E%3Cg transform='translate(84 84) rotate(-14)' fill='%23ffb0cc'%3E%3Cpath d='M0 0-13-8v16zM0 0l13-8v16z'/%3E%3Ccircle r='4'/%3E%3C/g%3E%3C/svg%3E")}
+html.meggy h1{color:#ff5c93;text-shadow:0 4px 0 #fff,0 7px 0 #e5306f,0 14px 26px rgba(0,0,0,.12)}
+html.meggy .bow{transform:scale(1) rotate(-12deg)}
+html.meggy .game{box-shadow:0 0 0 3px #ffd0e1 inset,0 14px 34px rgba(0,0,0,.1)}
+html.meggy .game:hover{box-shadow:0 0 0 3px #ffb0cc inset,0 24px 44px rgba(0,0,0,.14)}
+html.meggy .play{color:#fff;box-shadow:0 3px 0 var(--gold-dark)}
+html.meggy .ideas button{color:#fff}
+html.meggy .ideas{box-shadow:0 0 0 3px #ffd0e1 inset}
+html.meggy ::selection{background:#ff5c93;color:#fff}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <button id="brand" type="button" aria-pressed="false" title="Tap me"><h1 id="brand-name">Frazuur Arcade</h1><svg class="bow" viewBox="-30 -20 60 40" aria-hidden="true"><path d="M-4 0-26-15c-4-2-6 0-6 4v22c0 4 2 6 6 4zM4 0l22-15c4-2 6 0 6 4v22c0 4-2 6-6 4z" fill="#e5306f"/><path d="M-6 0-20-8v16zM6 0l14-8v16z" fill="#ff7aa6"/><circle r="7" fill="#c81d5c"/></svg></button>
+    <p>Silly little games that run in your browser. Tap one and play, on your phone or computer, nothing to install.</p>
+  </header>
+
+  <section class="grid" aria-label="Games">
+    <a class="game" href="/plop-catcher/">
+      <div class="cover"><img src="plop-catcher.webp" alt="Plop Catcher: a toilet in a pink bathroom waiting for falling poos" width="600" height="375"></div>
+      <div class="body">
+        <h2>Plop Catcher</h2>
+        <p>Slide the toilet to catch the falling poos, and dodge the wipes, goldfish and babies. The floor can only take three splats.</p>
+        <div class="top hidden" id="plop-top" hidden><h3>Top ploppers</h3><ol></ol></div>
+        <div class="meta"><span>Phone and computer</span><span class="play">Play</span></div>
+      </div>
+    </a>
+    <div class="soon"><div><strong>More on the way</strong>Got an idea for a game? <a href="#ideas">Send it over</a>.</div></div>
+  </section>
+
+  <section class="ideas" id="ideas" aria-labelledby="ideas-title">
+    <h2 id="ideas-title">Got a game idea?</h2>
+    <p>Tell us what you'd want to play. The best ones get made.</p>
+    <form id="idea-form">
+      <label>Your idea<textarea id="idea" name="idea" maxlength="600" required placeholder="A pigeon that steals chips off people at the beach…"></textarea></label>
+      <label>Your name (optional)<input id="idea-name" name="name" maxlength="24" autocomplete="nickname"></label>
+      <div class="row"><button type="submit">Send idea</button><span id="idea-status" role="status"></span></div>
+    </form>
+  </section>
+
+  <footer>Made for friends, for fun.</footer>
+</main>
+<script>
+// live top three from the Plop Catcher leaderboard; the card works fine without it
+fetch('https://theshow-vps.pleco-rooster.ts.net:8443/scores').then(r=>r.json()).then(rows=>{
+  if(!Array.isArray(rows)||!rows.length)return;
+  const box=document.getElementById('plop-top'),ol=box.querySelector('ol');
+  rows.slice(0,3).forEach((r,i)=>{const li=document.createElement('li'),s=document.createElement('span'),b=document.createElement('b');
+    s.textContent=(i+1)+'. '+r.name;b.textContent=r.score;li.append(s,b);ol.append(li)});
+  box.hidden=false;
+}).catch(()=>{});
+
+// tap the title to switch between Frazuur Arcade and Meggy's Arcade; the choice is remembered
+const brand=document.getElementById('brand'),brandName=document.getElementById('brand-name'),themeMeta=document.querySelector('meta[name=theme-color]');
+function setTheme(meggy){document.documentElement.classList.toggle('meggy',meggy);brand.setAttribute('aria-pressed',meggy);
+  brandName.textContent=meggy?"Meggy's Arcade":'Frazuur Arcade';document.title=brandName.textContent;themeMeta.content=meggy?'#ffe3ee':'#1d1220';
+  try{localStorage.arcadeTheme=meggy?'meggy':''}catch(e){}}
+try{if(localStorage.arcadeTheme==='meggy')setTheme(true)}catch(e){}
+brand.addEventListener('click',()=>setTheme(!document.documentElement.classList.contains('meggy')));
+
+// game ideas go to the same small server as the leaderboard
+const form=document.getElementById('idea-form'),status=document.getElementById('idea-status');
+form.addEventListener('submit',e=>{e.preventDefault();const btn=form.querySelector('button'),idea=form.idea.value.trim();
+  if(idea.length<3){status.textContent='Write a few words about it first.';return}
+  btn.disabled=true;status.textContent='Sending…';
+  fetch('https://theshow-vps.pleco-rooster.ts.net:8443/ideas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idea,name:document.getElementById('idea-name').value.trim()})})
+    .then(r=>r.json().then(d=>({ok:r.ok,d})))
+    .then(({ok,d})=>{if(ok){form.idea.value='';status.textContent='Got it, thank you!'}else status.textContent=d.error||'That didn\'t send. Try again?'})
+    .catch(()=>{status.textContent='That didn\'t send. Check your connection and try again.'})
+    .finally(()=>{btn.disabled=false})});
+</script>
+</body>
+</html>
