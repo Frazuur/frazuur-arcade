@@ -14,13 +14,15 @@ WORK=${DEPLOY_WORK:-$HOME/scratch/frazuur-arcade-deploy}
 MSG=${MSG:-"Deploy from frazuur-arcade $(git rev-parse --short HEAD 2>/dev/null || echo local)"}
 token() { env -u GH_TOKEN gh auth token -u Frazuur; }
 
-mirror() { # <public repo> <source dir> [extra source dir as dest subdir]
+mirror() { # <public repo> <source dir> [server dir, published as server/]
   local repo=$1 src=$2 dir=$WORK/${1#*/}
   mkdir -p "$WORK"
   if [ ! -d "$dir/.git" ]; then git clone -q "https://github.com/$repo.git" "$dir"; fi
   git -C "$dir" pull -q --ff-only
-  rsync -a --delete --exclude .git --exclude __pycache__ "$src/" "$dir/"
-  if [ -n "${3:-}" ]; then rsync -a --delete --exclude __pycache__ "$3/" "$dir/server/"; fi
+  local stage; stage=$(mktemp -d); trap 'rm -rf "$stage"' RETURN
+  rsync -a --exclude __pycache__ "$src/" "$stage/"
+  if [ -n "${3:-}" ]; then rsync -a --exclude __pycache__ "$3/" "$stage/server/"; fi
+  rsync -a --delete --exclude .git "$stage/" "$dir/"
   git -C "$dir" add -A
   if git -C "$dir" diff --cached --quiet; then echo "$repo: nothing to publish"; return; fi
   git -C "$dir" -c user.name=Frazuur -c user.email=Frazuur@users.noreply.github.com commit -qm "$MSG"
