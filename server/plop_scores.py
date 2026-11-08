@@ -135,7 +135,7 @@ class H(BaseHTTPRequestHandler):
         cl = self.headers.get("Content-Length")
         if cl is None:
             return self.bare(411)
-        if not cl.isdigit() or len(cl) > 6:
+        if not (cl.isascii() and cl.isdigit()) or len(cl) > 6:
             return self.bare(400)
         n = int(cl)
         if n > BODY_MAX:

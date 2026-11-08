@@ -1333,7 +1333,7 @@ custBadge();
  const next=()=>{if(!todo.length)return;if(!running){const [k,i]=todo.shift();thumb(k,i)}idle(next)};idle(next)}
 
 /* ---------- leaderboard ---------- */
-const API=(new URLSearchParams(location.search).get('api')||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/scores';
+const API=((['localhost','127.0.0.1',''].includes(location.hostname)&&new URLSearchParams(location.search).get('api'))||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/scores';
 // app key for the scores server: a speed bump against scripts, not a secret (rebuilt at runtime, sent as X-Plop-Key)
 const PLOP_KEY=((m,b)=>b.map((v,i)=>String.fromCharCode(v^m[i])).join(''))([195,127,177,221,41,164,125,86,98,73,149,2,103,73,70,105,104,245,194,155,170,150,174,179,12,166,243,250,177,20,110,6],[243,72,134,190,29,198,78,52,85,123,165,50,95,121,117,94,9,205,163,248,206,243,152,138,109,147,145,155,211,45,90,52]);
 let catches=0,runStart=0,lastName=(()=>{try{return localStorage.plopName||''}catch(e){return ''}})();
@@ -1501,7 +1501,9 @@ function poFrame(){if(!PO.on)return;const now=Date.now()+PO.off;
   if(PO.inMatch&&(PO.phase==='countdown'||PO.phase==='playing')&&PO.began!==PO.startAt){const left=PO.startAt-now;
     if(left>0)poCount(String(Math.ceil(left/1000)));else{PO.began=PO.startAt;PO.begin();poCount('Plop!');setTimeout(()=>{if(PO.countTxt==='Plop!')poCount('')},800)}}
   const sp=PO.phase==='playing'&&!!PO.id&&(!PO.inMatch||(!PO.alive&&Date.now()>PO.specAt));
-  if(sp!==PO.spec){PO.spec=sp;PO.snaps=[];if(sp){splats=[];flies=[];bits=[];texts=[]}else{poos=[];hazards=[]}poUi()}}
+  if(sp!==PO.spec){PO.spec=sp;PO.snaps=[];if(sp){splats=[];flies=[];bits=[];texts=[]}else{poos=[];hazards=[]}poUi()}
+  // a tab that was already hidden when the round began never fires visibilitychange: forfeit here too
+  if(document.hidden&&running&&PO.alive&&PO.inMatch){PO.out();poTick()}}
 setInterval(poFrame,100);
 function poCycle(dir){const al=poRivals().filter(p=>p.alive);if(!al.length)return;const i=al.findIndex(p=>p.id===PO.watch);
   poWatch(al[(i+dir+al.length)%al.length].id);poUi()}
@@ -1520,6 +1522,8 @@ $('poLeave').onclick=()=>{poStats();poLeaveRoom();PO.on=false;PO.phase='off';PO.
   for(const id in PO.chips)PO.chips[id].remove();PO.chips={};poNet(false);poUi();$('overlay').classList.remove('hidden');loadBoard();$('poGo').focus()};
 $('poBack').onclick=()=>{PO.back=true;poUi()};
 addEventListener('pagehide',()=>poLeaveRoom(true));
+// back/forward cache restore: pagehide already left the room, so drop the stale round and rejoin
+addEventListener('pageshow',e=>{if(e.persisted&&PO.on){running=false;poos=[];hazards=[];PO.inMatch=false;PO.alive=false;poRejoin()}});
 {const b=document.createElement('button');b.id='poGo';b.type='button';b.textContent='Poo Off';b.onclick=poOpen;$('go').after(b)}
 // a hidden tab can't keep up with the room: forfeit the round rather than stall everyone
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&PO.on&&running&&PO.alive&&PO.phase==='playing'){PO.out();poTick()}});
