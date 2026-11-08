@@ -336,7 +336,8 @@ function endProj(p,kind,pos,n,victim){
  if(g.ended===g.n&&!g.anyHit){S.kids[p.seat].st.miss++;const t=g.target;if(t>=0&&!S.kids[t].out&&g.minD<1.4)S.kids[t].st.dodge++}
 }
 function hitKid(i,p){const k=S.kids[i];if(k.inv>0||k.knock>0||p.grp.hit[i])return;p.grp.hit[i]=1;damage(i,p.type,p.seat)}
-function splash(p,pos,skip){S.kids.forEach((k,i)=>{if(i===p.seat||i===skip||k.out)return;const kp=kidPos(S.geo[i],k.slide,_k);if(Math.hypot(kp.x-pos.x,kp.z-pos.z)<SPLASH)hitKid(i,p)})}
+/* a ducked kid is covered by their table, so a splash can always be dodged by ducking */
+function splash(p,pos,skip){S.kids.forEach((k,i)=>{if(i===p.seat||i===skip||k.out||k.h<=.5)return;const kp=kidPos(S.geo[i],k.slide,_k);if(Math.hypot(kp.x-pos.x,kp.z-pos.z)<SPLASH)hitKid(i,p)})}
 function damage(i,f,from){
  const k=S.kids[i];k.hearts--;k.inv=INVULN;k.wind=0;
  if(f===CAKE){k.knock=KNOCK;k.inv=KNOCK+INVULN}
@@ -377,7 +378,7 @@ function botThink(i,dt){
  const th=b.th;
  if(th){if(b.seen!==th.id){b.seen=th.id;b.react=D.react*(.7+Math.random()*.6);b.will=Math.random()<D.dodge}
   b.react-=dt;
-  if(b.will&&b.react<=0){if(th.splash||k.wind>0){inp.slide=th.lx>k.slide?-SLIDE_MAX:SLIDE_MAX}else{inp.stand=false;if(b.st!=='hide'){b.st='hide';b.t=.4+Math.random()*.5}return}}}
+  if(b.will&&b.react<=0){if(k.wind>0){inp.slide=th.lx>k.slide?-SLIDE_MAX:SLIDE_MAX}else{inp.stand=false;if(b.st!=='hide'){b.st='hide';b.t=.4+Math.random()*.5}return}}}
  b.t-=dt;
  if(b.st==='hide'){inp.stand=false;b.slideT-=dt;if(b.slideT<=0){b.slideT=(1.5+Math.random()*2)/P.move;inp.slide=(Math.random()*2-1)*SLIDE_MAX}
   if(b.t<=0){if(k.ammo<=0&&!k.specs.length){b.t=.5;return}
@@ -524,6 +525,14 @@ let mode='menu',solo=false,mySeat=0,geo=[],KV=[],arena=null,arenaSig='',view={ph
 let R=null,SN=[],pSlide=0,predWind=0,predType=0,overShown=false;
 const stats={throws:0,hits:0,events:0};
 function SEATS(){return S&&amHost()?S.seats:R?R.seats:[]}
+/* events from the network: seats and food types must be in range before any lookup */
+function evOk(e){const ty=e[0],n=Math.max(geo.length,1),seat=v=>Number.isInteger(v)&&v>=-1&&v<n,food=v=>Number.isInteger(v)&&v>=0&&v<FOOD.length;
+ if(ty==='T')return food(e[2])&&seat(e[3])&&e.slice(4,11).every(Number.isFinite);
+ if(ty==='X')return food(e[2])&&e.slice(4,10).every(Number.isFinite);
+ if(ty==='H')return seat(e[1])&&food(e[2])&&seat(e[3]);
+ if(ty==='O')return seat(e[1]);
+ if(ty==='S')return seat(e[1])&&food(e[2]);
+ return ty==='P'}
 function nameOf(i){const s=SEATS()[i];return s?s.name:'Someone'}
 function buildArena(seats,my){
  const sig=seats.map(s=>s.color+s.hat).join('|')+'#'+my+'#'+seats.length;
@@ -539,8 +548,9 @@ function buildArena(seats,my){
 }
 const HEART='<svg viewBox="0 0 24 22"><path d="M12 21C5 15.5 1 12 1 7.2 1 3.8 3.7 1 7 1c2 0 3.8 1 5 2.7C13.2 2 15 1 17 1c3.3 0 6 2.8 6 6.2C23 12 19 15.5 12 21z" fill="#e8442e" stroke="#2a1f3d" stroke-width="2"/></svg>';
 const HEART0='<svg viewBox="0 0 24 22"><path d="M12 21C5 15.5 1 12 1 7.2 1 3.8 3.7 1 7 1c2 0 3.8 1 5 2.7C13.2 2 15 1 17 1c3.3 0 6 2.8 6 6.2C23 12 19 15.5 12 21z" fill="rgba(255,243,214,.25)" stroke="#fff3d6" stroke-width="2" stroke-dasharray="3 2"/></svg>';
-const hearts=n=>HEART.repeat(n)+HEART0.repeat(Math.max(0,HEARTS-n));
-function decKid(x){const fl=x[1],a=x[4]&7,b=x[4]>>3;return{slide:x[0]/100,stand:!!(fl&1),wind:fl&2?1:0,knock:fl&4?1:0,out:!!(fl&8),inv:fl&16?1:0,windType:(fl>>5)&7,windTarget:((fl>>8)&7)-1,hearts:x[2],ammo:x[3],specs:[a,b].filter(v=>v>0).map(v=>v-1),wins:x[5]}}
+const hearts=n=>{n=cl(n,0,HEARTS);return HEART.repeat(n)+HEART0.repeat(HEARTS-n)};
+function decKid(x){if(!Array.isArray(x))x=[];const fl=x[1]|0,a=x[4]&7,b=x[4]>>3;return{slide:clamp((+x[0]||0)/100,-SLIDE_MAX,SLIDE_MAX),stand:!!(fl&1),wind:fl&2?1:0,knock:fl&4?1:0,out:!!(fl&8),inv:fl&16?1:0,windType:(fl>>5)&7,windTarget:((fl>>8)&7)-1,hearts:cl(x[2],0,HEARTS),ammo:cl(x[3],0,99),specs:[a,b].filter(v=>v>0&&v<=FOOD.length).map(v=>v-1),wins:cl(x[5],0,WIN_ROUNDS)}}
+function cl(v,a,b){v=Math.round(+v);return v>=a&&v<=b?v:a}
 function encKid(k){const fl=(k.stand?1:0)|(k.wind>0?2:0)|(k.knock>0?4:0)|(k.out?8:0)|(k.inv>0?16:0)|((k.windType&7)<<5)|(((k.windTarget+1)&7)<<8);return[Math.round(k.slide*100),fl,k.hearts,k.ammo,(k.specs[0]!=null?k.specs[0]+1:0)+(k.specs[1]!=null?(k.specs[1]+1)*8:0),k.wins]}
 function clientView(){
  const L=SN[SN.length-1];if(!L)return;const rt=performance.now()-110;let a=null,b=L;
@@ -613,6 +623,7 @@ function updateTags(kids){
 /* ---------- juice: events from the host turned into splats, sounds and shakes ---------- */
 function vol(x,z){const g=geo[mySeat];if(!g)return 1;kidPos(g,0,_k);return clamp(1.4-Math.hypot(x-_k.x,z-_k.z)/12,.3,1)}
 function onEvent(e){
+ if(!Array.isArray(e)||!evOk(e))return;
  stats.events++;const ty=e[0];
  if(ty==='T'){const [,id,f,seat,ox,oy,oz,vx,vy,vz,sd]=e;stats.throws++;if(!geo.length)return;spawnVis(mkProj(id,f,seat,{x:ox,y:oy,z:oz},{x:vx,y:vy,z:vz},sd));if(KV[seat])KV[seat].rel=.18;sfx('throw',vol(ox,oz)*.8)}
  else if(ty==='X'){const [,id,f,kind,x,y,z,nx,ny,nz,vic]=e;killVis(id);if(kind===2||!geo.length)return;const F=FOOD[f];
@@ -788,15 +799,18 @@ let rcTimer=0;
 function reconnectSoon(){if(rcTimer)return;Net.retry++;if(Net.retry>9){toast('Connection lost. The fight carried on without you.',4);leaveAll();return}
  toast('Connection lost. Reconnecting…',2);rcTimer=setTimeout(()=>{rcTimer=0;reconnect()},Math.min(8000,600*Net.retry))}
 function reconnect(){if(Net.ws||!Net.room)return;netOpen({t:'join',room:Net.room,name:cleanName(prefs.name),color:prefs.color,token:Net.token})}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Net.room&&!Net.ws){clearTimeout(rcTimer);rcTimer=0;reconnect()}});
+/* a hidden page drops its socket during a match so a throttled host never freezes the fight; the relay holds
+   the seat for 60 s and hands the host role on. Coming back rejoins with the token. */
+function pauseNet(){if(!Net.ws||solo||mode!=='game')return;const ws=Net.ws;Net.ws=null;Net.closing=true;try{ws.onclose=null;ws.close()}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseNet();return}if(Net.room&&!Net.ws){clearTimeout(rcTimer);rcTimer=0;Net.closing=false;reconnect()}});
 addEventListener('online',()=>{if(Net.room&&!Net.ws)reconnect()});
 function onRelay(m){
  if(m.t==='welcome'){
   const wasHost=amHost();Net.room=m.room;Net.me=m.you;Net.token=m.token;Net.host=m.host;Net.retry=0;
-  Net.peers=new Map(m.peers.map(p=>[p.id,{...p,on:true}]));
+  Net.peers=new Map(m.peers.map(p=>[p.id,{...p,on:p.on!==false}]));
   sess.set({room:m.room,token:m.token});
   try{const u=new URL(location.href);u.searchParams.set('room',m.room);history.replaceState(null,'',u)}catch(e){}
-  if(amHost()){if(mode==='game'&&S){S.seats.forEach(s=>{if(s.pid>0&&s.pid!==Net.me)s.away=!Net.peers.has(s.pid)});lastSimAt=performance.now()}else if(mode==='game'&&!S)becomeHost();else{sendLobby();show('lobby')}}
+  if(amHost()){if(mode==='game'&&S){S.seats.forEach(s=>{if(s.pid>0&&s.pid!==Net.me){const q=Net.peers.get(s.pid);s.away=!(q&&q.on)}});lastSimAt=performance.now()}else if(mode==='game'&&!S)becomeHost();else{sendLobby();show('lobby')}}
   else{if(wasHost&&S){S=null}sendTo(Net.host,{t:'hi',hat:prefs.hat});if(mode!=='game')show('lobby')}
   renderLobby();
  }
@@ -826,36 +840,42 @@ function onGameMsg(from,d){
  if(from!==Net.host)return;
  if(d.t==='L'){Object.assign(lobbyS,d);if(mode!=='game')renderLobby()}
  else if(d.t==='r')onRoster(d);
- else if(d.t==='s'){SN.push({at:performance.now(),d});if(SN.length>10)SN.shift();if(mode!=='game'&&R)enterGame();for(const e of d.e||[])onEvent(e)}
+ else if(d.t==='s'&&Array.isArray(d.k)){if(!Array.isArray(d.e))d.e=[];SN.push({at:performance.now(),d});if(SN.length>10)SN.shift();if(mode!=='game'&&R)enterGame();for(const e of d.e||[])onEvent(e)}
  else if(d.t==='lobby'){toLobby()}
 }
 function onRoster(d){
- R={seats:d.seats.map(a=>({pid:a[0],name:a[1],color:a[2],hat:a[3],bp:a[4],away:!!a[5]})),diff:d.diff,st:d.st};
+ if(!Array.isArray(d.seats))return;R={seats:d.seats.slice(0,6).map(a=>({pid:a[0],name:a[1],color:a[2],hat:a[3],bp:a[4],away:!!a[5]})),diff:d.diff,st:d.st};
  const my=R.seats.findIndex(s=>s.pid===Net.me);buildArena(R.seats,Math.max(0,my));
  if(mode!=='game'&&SN.length)enterGame();
 }
 function rosterMsg(){return{t:'r',seats:S.seats.map(s=>[s.pid,s.name,s.color,s.hat,s.bp||'',s.away?1:0]),diff:S.diff,st:S.kids.map(k=>STK.map(n=>Math.round(k.st[n])))}}
 function broadcastRoster(){if(!solo&&S)sendTo(null,rosterMsg())}
 function snapMsg(){const m={t:'s',n:S.tick,ph:PH.indexOf(S.phase),pt:Math.round(S.pt*10),rd:S.round,w:S.lastWin,k:S.kids.map(encKid),e:S.out.splice(0)};if(S.phase==='mend')m.aw=S.awards;return m}
+/* the relay silently drops frames over 4 KB: trim the oldest events until the frame fits */
+const SNAP_MAX=3800,KEEP_EV='PO';
+function sendSnap(){const m=snapMsg();let j=JSON.stringify({t:'send',to:null,d:m});
+ while(j.length>SNAP_MAX&&m.e.length){const i=m.e.findIndex(e=>!KEEP_EV.includes(e[0]));m.e.splice(i<0?0:i,1);j=JSON.stringify({t:'send',to:null,d:m})}
+ sendTo(null,m)}
 function sendLobby(){if(!solo&&Net.room&&amHost())sendTo(null,{t:'L',bots:lobbyS.bots,diff:lobbyS.diff,hats:lobbyS.hats});renderLobby()}
 function becomeHost(){
  if(mode==='game'&&R&&SN.length){
   const L=SN[SN.length-1].d,seats=R.seats.map(s=>({...s}));newSim(seats,R.diff);
   seats.forEach(s=>{if(s.pid>0&&s.pid!==Net.me){const p=Net.peers.get(s.pid);s.away=!(p&&p.on)}else if(s.pid===Net.me)s.away=false});
-  L.k.forEach((x,i)=>{const d=decKid(x),k=S.kids[i];Object.assign(k,{slide:d.slide,hearts:d.hearts,ammo:d.ammo,specs:d.specs,wins:d.wins,out:d.out,knock:d.knock?.8:0,inv:d.inv?.8:0,h:d.stand?1:0});if(R.st&&R.st[i])STK.forEach((n,j)=>k.st[n]=R.st[i][j]||0);S.inputs[i].slide=d.slide});
+  L.k.forEach((x,i)=>{const d=decKid(x),k=S.kids[i];if(!k)return;Object.assign(k,{slide:d.slide,hearts:d.hearts,ammo:d.ammo,specs:d.specs,wins:d.wins,out:d.out,knock:d.knock?.8:0,inv:d.inv?.8:0,h:d.stand?1:0});if(R.st&&R.st[i])STK.forEach((n,j)=>k.st[n]=R.st[i][j]||0);S.inputs[i].slide=d.slide});
   S.phase=PH[L.ph]||'play';S.pt=L.pt/10;S.round=L.rd;S.lastWin=L.w;S.awards=L.aw||null;if(S.phase==='mend'&&!S.awards)S.awards=makeAwards();
   S.out=[];clearVis();lastSimAt=performance.now();broadcastRoster();
  }else{sendLobby()}
 }
 
-/* host loop: fixed 30 Hz simulation, 15 snapshots/s; a timer (not rAF) so it keeps going in the background */
+/* host loop: fixed 30 Hz simulation, 15 snapshots/s, on a timer. Browsers throttle timers in hidden tabs,
+   so a host that goes hidden closes its socket (see pauseNet) and the relay hands the host role on. */
 let lastSimAt=0;
 function hostLoop(){
  if(!S||!amHost()||mode!=='game'){lastSimAt=performance.now();return}
  const now=performance.now();S.acc+=Math.min(1,(now-lastSimAt)/1000)*timeScale;lastSimAt=now;let n=0,snap=false,ros=false;
- while(S.acc>=TICK&&n<120){S.acc-=TICK;applyLocalInput();simStep(TICK);n++;if(S.tick%2===0)snap=true;if(S.tick%30===0)ros=true}
- if(solo){S.out.length=0;return}
- if(snap&&Net.ws)sendTo(null,snapMsg());if(ros)broadcastRoster();
+ while(S.acc>=TICK&&n<120){S.acc-=TICK;applyLocalInput();simStep(TICK);n++;if(S.tick%2===0){snap=true;if(n>2&&S.out.length>30&&Net.ws&&!solo){sendSnap();snap=false}}if(S.tick%30===0)ros=true}
+ if(solo||!Net.ws){S.out.length=0;if(solo)return}
+ if(snap&&Net.ws)sendSnap();if(ros)broadcastRoster();
 }
 setInterval(hostLoop,16);
 let lastInputAt=0;
