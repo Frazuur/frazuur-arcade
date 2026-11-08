@@ -105,7 +105,16 @@ button{font:inherit;color:inherit;cursor:pointer}
 #knob::before,#knob::after{content:"";position:absolute;top:19px;width:0;height:0;border:8px solid transparent}
 #knob::before{left:3px;border-right-color:var(--ink)}
 #knob::after{right:3px;border-left-color:var(--ink)}
-#hint{position:absolute;left:0;right:0;bottom:calc(100% + 96px);text-align:center;color:var(--cream);font-weight:800;font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,1),0 2px 10px rgba(0,0,0,.95);padding:0 20px;transition:opacity .6s}
+#duck{position:absolute;left:50%;bottom:calc(100% + 96px);transform:translateX(-50%);display:flex;white-space:nowrap;align-items:center;gap:8px;background:var(--ink);color:var(--cream);font-weight:900;font-size:13px;padding:6px 10px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+#duck[hidden]{display:none}
+#duck i{display:block;width:86px;height:10px;border-radius:6px;background:linear-gradient(90deg,var(--mustard) calc(var(--f,1)*100%),rgba(255,243,214,.2) 0)}
+#duck.tired i{animation:tired .25s steps(2) infinite}
+#duck.tired{color:var(--mustard)}
+#duck.cramp{background:var(--tomato)}
+#duck.cramp span::after{content:" cramped!"}
+@keyframes tired{50%{background:linear-gradient(90deg,var(--tomato) calc(var(--f,1)*100%),rgba(255,243,214,.2) 0)}}
+#roundpill.late{background:var(--tomato)}
+#hint{position:absolute;left:0;right:0;bottom:calc(100% + 150px);text-align:center;color:var(--cream);font-weight:800;font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,1),0 2px 10px rgba(0,0,0,.95);padding:0 20px;transition:opacity .6s}
 #tags{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:2px;will-change:transform}
 .tag b{font-weight:900;font-size:13px;color:var(--cream);background:var(--ink);padding:2px 8px;border-radius:999px;white-space:nowrap;border:2px solid var(--c)}
@@ -158,7 +167,7 @@ body:has(.screen:not([hidden])) #toast.on{transform:translate(-50%,0)}
         <button class="food" id="fspec" type="button" aria-label="Arm your special food" disabled><small id="sname">none</small></button>
       </div>
     </div>
-    <div id="strip" aria-label="Slide along your table"><div id="track"></div><div id="knob"></div><div id="hint">Hold up here to pop up. Flick up to throw. Let go to duck.</div></div>
+    <div id="strip" aria-label="Slide along your table"><div id="track"></div><div id="knob"></div><div id="duck" hidden><span>Legs</span><i></i></div><div id="hint">Hold to pop up, flick up to throw, let go to duck. Your legs cramp if you duck too long.</div></div>
   </div>
 </div>
 
@@ -174,8 +183,9 @@ body:has(.screen:not([hidden])) #toast.on{transform:translate(-50%,0)}
     <div class="seg" id="hats"></div>
     <button class="btn big" id="bSolo" type="button">Play with bots</button>
     <div class="row"><button class="btn alt" id="bHost" type="button">Start a fight</button><button class="btn alt" id="bJoin" type="button">Join</button></div>
+    <button class="btn" id="bRejoin" type="button" hidden>Join that fight again</button>
     <details id="ver"><summary>Version 1.0</summary><ul>
-      <li>1.0: First food fight. Peas, pudding, spaghetti, cake and the odd watermelon. Play bots or up to 5 friends.</li>
+      <li>1.0: First food fight. Duck too long and your legs cramp; rounds end when lunch is over. Peas, pudding, spaghetti, cake and the odd watermelon. Play bots or up to 5 friends.</li>
     </ul></details>
   </div>
 </section>
@@ -245,7 +255,7 @@ const FOOD=[
  {name:'Spaghetti',r:.18,T:[.8,1.15],splat:'#d9461f',size:.65,parts:16},
  {name:'Cake',r:.3,T:[1.1,1.4],splat:'#ffc6d8',size:.95,parts:24},
  {name:'Watermelon',r:.34,T:[1.45,1.6],splat:'#e83a4a',size:1.9,parts:44}];
-const TICK=1/30,G=12,WINDUP=.45,COOLDOWN=.5,SLIDE_SPEED=4,SLIDE_MAX=.95,INVULN=1,KNOCK=1.4,AMMO_MAX=6,AMMO_EVERY=1.5,HEARTS=3,WIN_ROUNDS=3;
+const TICK=1/30,G=12,WINDUP=.45,COOLDOWN=.5,SLIDE_SPEED=4,SLIDE_MAX=.95,INVULN=1,KNOCK=1.4,AMMO_MAX=6,AMMO_EVERY=1.5,HEARTS=3,WIN_ROUNDS=3,DUCK_MAX=3,STAM_BACK=1.5,CRAMP=.8,TIRED=.5/3,AMMO_DUCKED=4,ROUND_WARN=60,ROUND_MAX=90;
 const HALF=1.2,TABLE_H=1.05,KID_BACK=.8,ROOM=10,SPLASH=2.0;
 const COLORS=['#e8442e','#f6b819','#4f9a2c','#2f7fd8','#9b59d0','#ff7fb0','#ff8a1f','#20a99a'];
 const HATS=[['cap','Cap'],['beanie','Beanie'],['spiky','Spiky'],['bunches','Bunches'],['flattop','Flat-top']];
@@ -259,7 +269,7 @@ function seatGeo(i,N){const th=Math.PI/2+i*2*Math.PI/N,R=ringR(N);const c=new TH
 function kidPos(g,slide,out){return out.copy(g.c).addScaledVector(g.f,-KID_BACK).addScaledVector(g.r,slide)}
 function projPos(p,t,out){out.set(p.o.x+p.v.x*t,p.o.y+p.v.y*t-.5*G*t*t,p.o.z+p.v.z*t);if(p.type===SPAG){const k=Math.min(1,t*2.5),w=Math.sin(t*10+p.seed*6.28)*.4*k;out.x+=p.sx*w;out.z+=p.sz*w;out.y+=Math.cos(t*13+p.seed*3)*.12*k}return out}
 function mkProj(id,f,seat,o,v,seed){const hl=Math.hypot(v.x,v.z)||1;return{id,type:f,seat,o:{x:o.x,y:o.y,z:o.z},v,seed,sx:-v.z/hl,sz:v.x/hl,t:0}}
-function newKid(){return{slide:0,stand:false,h:0,wind:0,windType:0,windTarget:-1,aim:null,cd:0,knock:0,inv:0,out:false,hearts:HEARTS,ammo:AMMO_MAX,ammoT:0,specs:[],wins:0,st:{hits:0,thrown:0,peas:0,pud:0,dodge:0,big:0,duck:0,miss:0}}}
+function newKid(){return{slide:0,stand:false,h:0,wind:0,windType:0,windTarget:-1,aim:null,cd:0,knock:0,inv:0,out:false,hearts:HEARTS,ammo:AMMO_MAX,ammoT:0,stam:1,cramp:0,rh:0,specs:[],wins:0,st:{hits:0,thrown:0,peas:0,pud:0,dodge:0,big:0,duck:0,miss:0}}}
 const STK=['hits','thrown','peas','pud','dodge','big','duck','miss'];
 
 /* ---------- host simulation (runs on the host phone, or locally in solo play) ---------- */
@@ -268,7 +278,7 @@ const _p=new THREE.Vector3(),_k=new THREE.Vector3();
 function newSim(seats,diff){
  const N=seats.length;
  S={N,seats,diff,kids:seats.map(()=>newKid()),inputs:seats.map(()=>({slide:0,stand:false,th:null})),bots:seats.map(()=>newBrain()),
-  phase:'count',pt:3,round:1,proj:[],pid:1,specT:3,out:[],tick:0,lastWin:-1,awards:null,acc:0,geo:seats.map((s,i)=>seatGeo(i,N))};
+  phase:'count',pt:3,rt:0,round:1,proj:[],pid:1,specT:3,out:[],tick:0,lastWin:-1,awards:null,acc:0,geo:seats.map((s,i)=>seatGeo(i,N))};
 }
 function emit(e){S.out.push(e);onEvent(e)}
 function botControlled(i){const s=S.seats[i];return s.pid===0||!!s.away}
@@ -282,17 +292,28 @@ function simStep(dt){
   if(can)k.slide=approach(k.slide,clamp(+inp.slide||0,-SLIDE_MAX,SLIDE_MAX),SLIDE_SPEED*dt);
   if(inp.th){if(can&&ph==='play')tryThrow(i,inp.th);inp.th=null}
   if(k.wind>0){k.wind-=dt;if(!can)k.wind=0;else if(k.wind<=0){k.wind=0;launch(i)}}
-  k.stand=can&&ph!=='mend'&&(!!inp.stand||k.wind>0);
+  /* duck stamina: about 3 s of ducking, then legs cramp and you pop up for a moment (you can still slide) */
+  if(k.cramp>0){k.cramp-=dt;if(k.cramp<=0){k.cramp=0;k.stam=.35}}
+  k.stand=can&&ph!=='mend'&&(!!inp.stand||k.wind>0||(k.cramp>0&&ph==='play'));
+  if(ph==='play'&&can){if(k.stand)k.stam=Math.min(1,k.stam+dt/STAM_BACK);else{k.stam-=dt/DUCK_MAX;if(k.stam<=0){k.stam=0;k.cramp=CRAMP;k.stand=true}}}
+  else k.stam=Math.min(1,k.stam+dt/STAM_BACK);
   k.h=approach(k.h,k.stand?1:0,dt/.12);
-  if(ph==='play'&&can){if(!k.stand)k.st.duck+=dt;if(k.ammo<AMMO_MAX){k.ammoT+=dt;if(k.ammoT>=AMMO_EVERY){k.ammoT=0;k.ammo++}}}
+  if(ph==='play'&&can){if(!k.stand)k.st.duck+=dt;if(k.ammo<AMMO_MAX){k.ammoT+=dt;if(k.ammoT>=(k.stand?AMMO_EVERY:AMMO_DUCKED)){k.ammoT=0;k.ammo++}}}
  });
  for(let j=S.proj.length-1;j>=0;j--){const p=S.proj[j];p.t+=dt;if(stepProj(p))S.proj.splice(j,1)}
  if(ph==='play'){S.specT-=dt;if(S.specT<=0){S.specT=9/Math.sqrt(S.N)*(.8+Math.random()*.4);giveSpecial()}}
  if(ph==='count'&&S.pt<=0){S.phase='play';emit(['P',1,S.round,-1])}
- else if(ph==='play'){const alive=[];S.kids.forEach((k,i)=>{if(!k.out)alive.push(i)});if(alive.length<=1){const w=alive.length?alive[0]:-1;if(w>=0)S.kids[w].wins++;S.lastWin=w;S.phase='rend';S.pt=3;emit(['P',2,S.round,w])}}
+ else if(ph==='play'){const alive=[];S.kids.forEach((k,i)=>{if(!k.out)alive.push(i)});
+  const was=S.rt;S.rt+=dt;if(was<ROUND_WARN&&S.rt>=ROUND_WARN)emit(['P',4,S.round,-1]);
+  let w=-2,up=0;
+  if(alive.length<=1)w=alive.length?alive[0]:-1;
+  else if(S.rt>=ROUND_MAX){up=1;/* lunch is over: most hearts wins, then most hits this round */
+   const best=alive.reduce((a,i)=>{const k=S.kids[i],b=S.kids[a];return k.hearts>b.hearts||(k.hearts===b.hearts&&k.rh>b.rh)?i:a},alive[0]),bk=S.kids[best];
+   w=alive.filter(i=>S.kids[i].hearts===bk.hearts&&S.kids[i].rh===bk.rh).length>1?-1:best}
+  if(w>-2){if(w>=0)S.kids[w].wins++;S.lastWin=w;S.phase='rend';S.pt=3;emit(['P',2,S.round,w,up])}}
  else if(ph==='rend'&&S.pt<=0){if(S.kids.some(k=>k.wins>=WIN_ROUNDS)){S.phase='mend';S.pt=0;S.awards=makeAwards();emit(['P',3,S.round,S.lastWin])}else newRound()}
 }
-function newRound(){S.round++;S.phase='count';S.pt=3;S.proj=[];S.specT=3;S.kids.forEach(k=>Object.assign(k,{hearts:HEARTS,out:false,knock:0,inv:0,wind:0,cd:0,ammo:AMMO_MAX,ammoT:0,specs:[]}));emit(['P',0,S.round,-1])}
+function newRound(){S.round++;S.phase='count';S.pt=3;S.rt=0;S.proj=[];S.specT=3;S.kids.forEach(k=>Object.assign(k,{hearts:HEARTS,out:false,knock:0,inv:0,wind:0,cd:0,ammo:AMMO_MAX,ammoT:0,stam:1,cramp:0,rh:0,specs:[]}));emit(['P',0,S.round,-1])}
 function tryThrow(i,th){
  const k=S.kids[i];if(k.wind>0||k.cd>0)return;const f=th.f|0;
  let tx=+th.x,ty=+th.y,tz=+th.z;if(!isFinite(tx+ty+tz)||f<0||f>4)return;
@@ -339,9 +360,9 @@ function hitKid(i,p){const k=S.kids[i];if(k.inv>0||k.knock>0||p.grp.hit[i])retur
 /* a ducked kid is covered by their table, so a splash can always be dodged by ducking */
 function splash(p,pos,skip){S.kids.forEach((k,i)=>{if(i===p.seat||i===skip||k.out||k.h<=.5)return;const kp=kidPos(S.geo[i],k.slide,_k);if(Math.hypot(kp.x-pos.x,kp.z-pos.z)<SPLASH)hitKid(i,p)})}
 function damage(i,f,from){
- const k=S.kids[i];k.hearts--;k.inv=INVULN;k.wind=0;
+ const k=S.kids[i];k.hearts-=S.rt>=ROUND_WARN?2:1;k.inv=INVULN;k.wind=0;
  if(f===CAKE){k.knock=KNOCK;k.inv=KNOCK+INVULN}
- if(f===PUD)k.st.pud++;const t=S.kids[from];if(t){t.st.hits++;if(f>=CAKE)t.st.big++}
+ if(f===PUD)k.st.pud++;const t=S.kids[from];if(t){t.st.hits++;t.rh++;if(f>=CAKE)t.st.big++}
  emit(['H',i,f,from]);
  if(k.hearts<=0){k.hearts=0;k.out=true;emit(['O',i,from])}
 }
@@ -376,7 +397,7 @@ function botThink(i,dt){
  if(k.out||k.knock>0||S.phase!=='play'){inp.stand=false;b.st='hide';b.t=.5+Math.random();return}
  if(S.tick%3===0)b.th=threat(i);
  const th=b.th;
- if(th){if(b.seen!==th.id){b.seen=th.id;b.react=D.react*(.7+Math.random()*.6);b.will=Math.random()<D.dodge}
+ if(th){if(b.seen!==th.id){b.seen=th.id;b.react=D.react*(.7+Math.random()*.6);b.will=Math.random()<D.dodge*(1-Math.min(.5,(S.rt||0)/120))}
   b.react-=dt;
   if(b.will&&b.react<=0){if(k.wind>0){inp.slide=th.lx>k.slide?-SLIDE_MAX:SLIDE_MAX}else{inp.stand=false;if(b.st!=='hide'){b.st='hide';b.t=.4+Math.random()*.5}return}}}
  b.t-=dt;
@@ -549,22 +570,22 @@ function buildArena(seats,my){
 const HEART='<svg viewBox="0 0 24 22"><path d="M12 21C5 15.5 1 12 1 7.2 1 3.8 3.7 1 7 1c2 0 3.8 1 5 2.7C13.2 2 15 1 17 1c3.3 0 6 2.8 6 6.2C23 12 19 15.5 12 21z" fill="#e8442e" stroke="#2a1f3d" stroke-width="2"/></svg>';
 const HEART0='<svg viewBox="0 0 24 22"><path d="M12 21C5 15.5 1 12 1 7.2 1 3.8 3.7 1 7 1c2 0 3.8 1 5 2.7C13.2 2 15 1 17 1c3.3 0 6 2.8 6 6.2C23 12 19 15.5 12 21z" fill="rgba(255,243,214,.25)" stroke="#fff3d6" stroke-width="2" stroke-dasharray="3 2"/></svg>';
 const hearts=n=>{n=cl(n,0,HEARTS);return HEART.repeat(n)+HEART0.repeat(HEARTS-n)};
-function decKid(x){if(!Array.isArray(x))x=[];const fl=x[1]|0,a=x[4]&7,b=x[4]>>3;return{slide:clamp((+x[0]||0)/100,-SLIDE_MAX,SLIDE_MAX),stand:!!(fl&1),wind:fl&2?1:0,knock:fl&4?1:0,out:!!(fl&8),inv:fl&16?1:0,windType:(fl>>5)&7,windTarget:((fl>>8)&7)-1,hearts:cl(x[2],0,HEARTS),ammo:cl(x[3],0,99),specs:[a,b].filter(v=>v>0&&v<=FOOD.length).map(v=>v-1),wins:cl(x[5],0,WIN_ROUNDS)}}
+function decKid(x){if(!Array.isArray(x))x=[];const fl=x[1]|0,a=x[4]&7,b=x[4]>>3;return{slide:clamp((+x[0]||0)/100,-SLIDE_MAX,SLIDE_MAX),stand:!!(fl&1),wind:fl&2?1:0,knock:fl&4?1:0,out:!!(fl&8),inv:fl&16?1:0,windType:(fl>>5)&7,windTarget:((fl>>8)&7)-1,hearts:cl(x[2],0,HEARTS),ammo:cl(x[3],0,99),specs:[a,b].filter(v=>v>0&&v<=FOOD.length).map(v=>v-1),wins:cl(x[5],0,WIN_ROUNDS),cramp:fl&2048?1:0,tired:!!(fl&4096),stam:x[6]==null?1:cl(x[6],0,20)/20}}
 function cl(v,a,b){v=Math.round(+v);return v>=a&&v<=b?v:a}
-function encKid(k){const fl=(k.stand?1:0)|(k.wind>0?2:0)|(k.knock>0?4:0)|(k.out?8:0)|(k.inv>0?16:0)|((k.windType&7)<<5)|(((k.windTarget+1)&7)<<8);return[Math.round(k.slide*100),fl,k.hearts,k.ammo,(k.specs[0]!=null?k.specs[0]+1:0)+(k.specs[1]!=null?(k.specs[1]+1)*8:0),k.wins]}
+function encKid(k){const fl=(k.stand?1:0)|(k.wind>0?2:0)|(k.knock>0?4:0)|(k.out?8:0)|(k.inv>0?16:0)|((k.windType&7)<<5)|(((k.windTarget+1)&7)<<8)|(k.cramp>0?2048:0)|(k.cramp<=0&&k.stam<TIRED&&!k.stand?4096:0);return[Math.round(k.slide*100),fl,k.hearts,k.ammo,(k.specs[0]!=null?k.specs[0]+1:0)+(k.specs[1]!=null?(k.specs[1]+1)*8:0),k.wins,Math.round(k.stam*20)]}
 function clientView(){
  const L=SN[SN.length-1];if(!L)return;const rt=performance.now()-110;let a=null,b=L;
  for(let j=SN.length-1;j>0;j--){if(SN[j-1].at<=rt){a=SN[j-1];b=SN[j];break}}
  const u=a?clamp((rt-a.at)/((b.at-a.at)||1),0,1):1,d=L.d;
- view.phase=PH[d.ph]||'play';view.pt=d.pt/10;view.round=d.rd;view.aw=d.aw||null;view.lastWin=d.w;
+ view.phase=PH[d.ph]||'play';view.pt=d.pt/10;view.round=d.rd;view.aw=d.aw||null;view.lastWin=d.w;view.rt=clamp(+d.c||0,0,ROUND_MAX);
  view.kids=d.k.map((x,i)=>{const k=decKid(x);if(a&&a.d.k[i]&&b.d.k[i])k.slide=lerp(a.d.k[i][0],b.d.k[i][0],u)/100;return k});
 }
 function updateView(dt){
- if(amHost()&&S){view.phase=S.phase;view.pt=S.pt;view.round=S.round;view.aw=S.awards;view.lastWin=S.lastWin;view.kids=S.kids;return}
+ if(amHost()&&S){view.phase=S.phase;view.pt=S.pt;view.round=S.round;view.aw=S.awards;view.lastWin=S.lastWin;view.rt=S.rt||0;view.kids=S.kids;return}
  clientView();const mk=view.kids&&view.kids[mySeat];if(!mk)return;
  predWind=Math.max(0,predWind-dt);
  if(!mk.knock&&!mk.out){pSlide=approach(pSlide,ctl.slide,SLIDE_SPEED*dt);const hs=mk.slide;if(Math.abs(hs-pSlide)>.5)pSlide+=(hs-pSlide)*.12;
-  mk.slide=pSlide;mk.stand=localStand()||predWind>0||!!mk.wind;if(predWind>0&&!mk.wind){mk.wind=1;mk.windType=predType}}
+  mk.slide=pSlide;mk.stand=localStand()||predWind>0||!!mk.wind||!!mk.cramp;if(predWind>0&&!mk.wind){mk.wind=1;mk.windType=predType}}
  else pSlide=mk.slide;
 }
 function previewKids(){return [0,1,2,3].map(i=>({slide:i?Math.sin(T*.5+i)*.6:0,stand:i===0,wind:0,knock:0,out:false,inv:0,windType:0,windTarget:-1,hearts:3,ammo:6,specs:[],wins:0}))}
@@ -594,11 +615,13 @@ function updateKids(dt,kids){
 
 /* camera: low behind your own kid, pulled back until every other table fits on screen */
 let camBack=5,shake=0;const camLook=new THREE.Vector3();
-function placeCam(back,slide){const g=geo[mySeat];if(!g)return;kidPos(g,slide*.4,_v);cam.position.copy(_v).addScaledVector(g.f,-back);cam.position.y=2.5+back*.3;camLook.set(0,.2,0).addScaledVector(g.f,-ringR(geo.length)*.25);cam.lookAt(camLook)}
+function placeCam(back,slide){const g=geo[mySeat];if(!g)return;kidPos(g,slide*.4,_v);cam.position.copy(_v).addScaledVector(g.f,-back);cam.position.y=2.5+back*.3;camLook.set(0,.2,0).addScaledVector(g.f,-ringR(geo.length)*.6);cam.lookAt(camLook)}
 function fitCamera(){
  const asp=innerWidth/innerHeight;cam.aspect=Math.max(asp,.6);cam.fov=asp<1?66:52;cam.updateProjectionMatrix();
  const N=geo.length;if(!N)return;
- for(camBack=2.2;camBack<16;camBack+=.2){placeCam(camBack,0);cam.updateMatrixWorld();let ok=true;
+ for(camBack=3.2;camBack<16;camBack+=.2){placeCam(camBack,0);
+  if(Math.max(Math.abs(cam.position.x),Math.abs(cam.position.z))>ROOM-.4){camBack-=.2;break}/* stay inside the canteen */
+  cam.updateMatrixWorld();let ok=true;
   for(let j=0;j<N&&ok;j++){if(j===mySeat)continue;for(const s of [-1,1])for(const y of [0,2.1]){kidPos(geo[j],s*(SLIDE_MAX+.45),_v);_v.y=y;_v.project(cam);if(Math.abs(_v.x)>.92||_v.y>.78||_v.z>1)ok=false}}
   kidPos(geo[mySeat],0,_v);_v.y=1.1;_v.project(cam);if(_v.y<-.5)ok=false;
   if(ok)break}
@@ -638,8 +661,9 @@ function onEvent(e){
  else if(ty==='P'){const [,ph,rd,w]=e;
   if(ph===0){clearVis();banner('Round '+rd,'First to '+WIN_ROUNDS+' rounds wins',1.8);sfx('beep')}
   else if(ph===1){banner('SPLAT!','',.9);sfx('go')}
-  else if(ph===2){banner(w>=0?(w===mySeat?'You win the round!':nameOf(w)+' wins the round!'):'Everybody got splatted!','',2.6);sfx(w===mySeat?'win':'lose')}
-  else if(ph===3){overShown=false}}
+  else if(ph===2){const up=e[4]===1;banner(w>=0?(w===mySeat?'You win the round!':nameOf(w)+' wins the round!'):(up?'Lunch is over! A draw.':'Everybody got splatted!'),up&&w>=0?'Most hearts left when the bell rang':'',2.6);sfx(w===mySeat?'win':'lose')}
+  else if(ph===3){overShown=false}
+  else if(ph===4&&mode==='game'){banner('Lunch is nearly over!','Sudden death: every hit costs 2 hearts',2.4);sfx('beep')}}
 }
 let seenSpecial=false;
 function hurtMe(f){shake=reduceMotion()?0:(f===CAKE||f===MELON?.5:.28);const fl=$('flash');fl.classList.remove('on');void fl.offsetWidth;fl.classList.add('on');sfx('oof');
@@ -747,8 +771,11 @@ function updateHUD(dt){
  const ph=view.phase;
  if(ph==='count'&&view.pt>0&&bannerT<=0){$('bt').textContent=Math.ceil(view.pt);$('bs').hidden=true;$('banner').classList.add('on')}
  else if(ph==='play'&&bannerT<=0)$('banner').classList.remove('on');
- const key=k.hearts+'|'+k.wins+'|'+view.round+'|'+k.out;
- if(key!==lastHud){lastHud=key;$('myhearts').innerHTML=hearts(k.hearts);$('mywins').innerHTML='Rounds '+[0,1,2].map(n=>`<span class="pip${n<k.wins?' on':''}"></span>`).join('');$('roundpill').textContent='Round '+view.round}
+ const left=Math.max(0,Math.ceil(ROUND_MAX-(view.rt||0))),clock=ph==='play'?' · '+(left/60|0)+':'+String(left%60).padStart(2,'0'):'';
+ const dm=$('duck'),st=k.stam==null?1:k.stam;dm.style.setProperty('--f',st.toFixed(2));dm.classList.toggle('tired',!!k.tired);dm.classList.toggle('cramp',!!k.cramp);dm.hidden=ph!=='play'||k.out;
+ $('roundpill').classList.toggle('late',ph==='play'&&left<=ROUND_MAX-ROUND_WARN);
+ const key=k.hearts+'|'+k.wins+'|'+view.round+'|'+k.out+'|'+clock;
+ if(key!==lastHud){lastHud=key;$('myhearts').innerHTML=hearts(k.hearts);$('mywins').innerHTML='Rounds '+[0,1,2].map(n=>`<span class="pip${n<k.wins?' on':''}"></span>`).join('');$('roundpill').textContent='Round '+view.round+clock}
  updateFoodBtns(false);
  $('knob').style.left=(50+ctl.slide/SLIDE_MAX*50)+'%';
  $('hint').style.opacity=hintUsed||view.round>1?0:1;
@@ -828,7 +855,9 @@ function onRelay(m){
  else if(m.t==='error'){
   const msg={no_room:"There's no fight with that code. Check the letters and try again.",full:'That fight is full. Six kids is the most.',locked:'That fight has already started. Ask them to let you in after this match.',bad:'Something went wrong. Try again.'}[m.code];
   if(m.code==='rate')return;
-  if(!Net.room||Net.want&&Net.want.t!=='send'){if(Net.want&&Net.want.token&&m.code==='no_room')toast('That fight has ended.',3);else toast(msg||'Something went wrong.',4);
+  if(Net.want&&Net.want.token&&(m.code==='no_room'||m.code==='locked'||m.code==='full')){seatTimedOut(m.code);return}
+  if(m.code==='bad'&&Net.room)return;
+  if(!Net.room||Net.want&&Net.want.t!=='send'){toast(msg||'Something went wrong.',4);
    if(!Net.room||m.code==='no_room'){Net.closing=true;try{Net.ws&&Net.ws.close()}catch(e){}Net.ws=null;Net.room=null;sess.set(null);S=null;show(Net.want&&Net.want.t==='join'&&!Net.want.token?'join':'title')}}}
 }
 function onGameMsg(from,d){
@@ -850,7 +879,7 @@ function onRoster(d){
 }
 function rosterMsg(){return{t:'r',seats:S.seats.map(s=>[s.pid,s.name,s.color,s.hat,s.bp||'',s.away?1:0]),diff:S.diff,st:S.kids.map(k=>STK.map(n=>Math.round(k.st[n])))}}
 function broadcastRoster(){if(!solo&&S)sendTo(null,rosterMsg())}
-function snapMsg(){const m={t:'s',n:S.tick,ph:PH.indexOf(S.phase),pt:Math.round(S.pt*10),rd:S.round,w:S.lastWin,k:S.kids.map(encKid),e:S.out.splice(0)};if(S.phase==='mend')m.aw=S.awards;return m}
+function snapMsg(){const m={t:'s',n:S.tick,ph:PH.indexOf(S.phase),pt:Math.round(S.pt*10),rd:S.round,w:S.lastWin,k:S.kids.map(encKid),c:Math.round(S.rt||0),e:S.out.splice(0)};if(S.phase==='mend')m.aw=S.awards;return m}
 /* the relay silently drops frames over 4 KB: trim the oldest events until the frame fits */
 const SNAP_MAX=3800,KEEP_EV='PO';
 function sendSnap(){const m=snapMsg();let j=JSON.stringify({t:'send',to:null,d:m});
@@ -862,7 +891,7 @@ function becomeHost(){
   const L=SN[SN.length-1].d,seats=R.seats.map(s=>({...s}));newSim(seats,R.diff);
   seats.forEach(s=>{if(s.pid>0&&s.pid!==Net.me){const p=Net.peers.get(s.pid);s.away=!(p&&p.on)}else if(s.pid===Net.me)s.away=false});
   L.k.forEach((x,i)=>{const d=decKid(x),k=S.kids[i];if(!k)return;Object.assign(k,{slide:d.slide,hearts:d.hearts,ammo:d.ammo,specs:d.specs,wins:d.wins,out:d.out,knock:d.knock?.8:0,inv:d.inv?.8:0,h:d.stand?1:0});if(R.st&&R.st[i])STK.forEach((n,j)=>k.st[n]=R.st[i][j]||0);S.inputs[i].slide=d.slide});
-  S.phase=PH[L.ph]||'play';S.pt=L.pt/10;S.round=L.rd;S.lastWin=L.w;S.awards=L.aw||null;if(S.phase==='mend'&&!S.awards)S.awards=makeAwards();
+  S.phase=PH[L.ph]||'play';S.pt=L.pt/10;S.round=L.rd;S.rt=clamp(+L.c||0,0,ROUND_MAX);S.lastWin=L.w;S.awards=L.aw||null;if(S.phase==='mend'&&!S.awards)S.awards=makeAwards();
   S.out=[];clearVis();lastSimAt=performance.now();broadcastRoster();
  }else{sendLobby()}
 }
@@ -879,7 +908,7 @@ function hostLoop(){
 }
 setInterval(hostLoop,16);
 let lastInputAt=0;
-function guestInput(now){if(amHost()||mode!=='game'||!Net.ws)return;if(now-lastInputAt<80)return;lastInputAt=now;sendTo(Net.host,{t:'i',s:Math.round(pSlide*100),u:localStand()?1:0})}
+function guestInput(now){if(amHost()||mode!=='game'||!Net.ws||!Net.room)return;if(now-lastInputAt<80)return;lastInputAt=now;sendTo(Net.host,{t:'i',s:Math.round(pSlide*100),u:localStand()?1:0})}
 
 /* ---------- menus and flow ---------- */
 let prefs={name:store.get('name',''),color:store.get('color',COLORS[Math.random()*COLORS.length|0]),hat:store.get('hat','cap')};
@@ -905,6 +934,11 @@ function startMatch(){
  buildArena(seats,my);pSlide=0;ctl.slide=0;enterGame();emit(['P',0,1,-1]);lastSimAt=performance.now();
  if(!solo){send({t:'lock',locked:true});broadcastRoster();sendTo(null,snapMsg())}
 }
+/* a rejoin with our token was refused: the seat was freed (away too long) or the fight is gone */
+function seatTimedOut(code){const room=Net.room||(Net.want&&Net.want.room);leaveAll();
+ if(code==='no_room'){toast('That fight has ended.',3);return}
+ toast('You were away too long, so your seat was given up.',4);
+ if(room){$('codeIn').value=room;const b=$('bRejoin');b.hidden=false;b.onclick=()=>{b.hidden=true;toast('Joining '+room+'…',1.5);joinCode(room)}}}
 function leaveAll(){Net.closing=true;if(Net.ws){send({t:'leave'});try{Net.ws.close()}catch(e){}}Net.ws=null;Net.room=null;Net.host=0;sess.set(null);S=null;R=null;SN=[];solo=false;mode='menu';clearTimeout(rcTimer);rcTimer=0;
  try{const u=new URL(location.href);u.searchParams.delete('room');history.replaceState(null,'',u)}catch(e){}show('title')}
 function renderLobby(){
@@ -942,7 +976,7 @@ $('bMenu').onclick=leaveAll;
 $('quit').onclick=()=>{$('confirm').hidden=false;$('cNo').focus()};
 $('cNo').onclick=()=>{$('confirm').hidden=true};
 $('cYes').onclick=()=>{$('confirm').hidden=true;leaveAll()};
-let toastT=0;function toast(t,dur=2.2){$('toast').textContent=t;$('toast').classList.add('on');toastT=dur}
+let toastT=0;function toast(t,dur=2.2){if(toastT>0&&$('toast').textContent===t){toastT=Math.max(toastT,dur);return}$('toast').textContent=t;$('toast').classList.add('on');toastT=dur}
 
 /* update check: version.json sits next to the page; never interrupts a match */
 let newVer=null;
