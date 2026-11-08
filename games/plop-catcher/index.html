@@ -118,7 +118,7 @@ button:focus-visible{outline:4px solid var(--gold);outline-offset:4px}
 .tile:hover{box-shadow:0 8px 0 #160b03}
 .tile.on{background:linear-gradient(180deg,#6a3f1e,#3d220e);box-shadow:0 5px 0 #160b03,0 0 0 3px var(--gold)}
 .tile .th{position:relative;display:block}
-.tile canvas{display:block;width:100%;aspect-ratio:4/3;border-radius:13px}
+.tile canvas{display:block;width:100%;height:auto;aspect-ratio:4/3;border-radius:13px}
 .tile.lock canvas{filter:grayscale(.8) brightness(.42)}
 .tile.lock{cursor:default}
 .tile.lock:hover{transform:none}
@@ -169,7 +169,7 @@ button:focus-visible{outline:4px solid var(--gold);outline-offset:4px}
   </form>
   <p id="note" class="hidden" role="status"></p>
   <div id="got" class="hidden"><h2>New this run · tap one to use it</h2><div class="chips"></div></div>
-  <div id="btns"><button id="go">Start plopping</button><button id="cust" type="button">Customise<span id="cdot" class="hidden"></span></button></div>
+  <div id="btns"><button id="go">Start plopping</button><button id="cust" type="button" data-impeccable-ignore="hard-offset-shadow">Customise<span id="cdot" class="hidden"></span></button></div>
   <button id="emma" type="button" aria-pressed="false">Emma mode: off</button>
   <ol id="board" class="hidden"></ol>
   <details id="ver">
@@ -490,7 +490,8 @@ const sfx={
   fart(){const o=A.createOscillator(),g=A.createGain(),l=A.createOscillator(),lg=A.createGain(),n=A.currentTime;o.type='sawtooth';o.frequency.setValueAtTime(110,n);o.frequency.exponentialRampToValueAtTime(60,n+.9);l.frequency.value=28;lg.gain.value=30;l.connect(lg);lg.connect(o.frequency);g.gain.setValueAtTime(.35,n);g.gain.exponentialRampToValueAtTime(.001,n+.9);o.connect(g);g.connect(master);o.start(n);l.start(n);o.stop(n+1);l.stop(n+1)},
   flush(){noise(1.4,.5,0,900);tone(300,1.2,'sine',.15,0,60)},
   bad(){[0,.18,.36].forEach((d,i)=>tone([311,294,262][i],.2,'sawtooth',.16,A.currentTime+d));tone(240,.7,'sawtooth',.14,A.currentTime+.54,90);noise(.12,.25,0,1800)},
-  phew(){tone(880,.12,'sine',.08,0,1100)}
+  phew(){tone(880,.12,'sine',.08,0,1100)},
+  unlock(){[523,659,784,1046].forEach((f,i)=>tone(f,.2,'triangle',.14,A.currentTime+i*.07));tone(2093,.35,'sine',.05,A.currentTime+.3,3136)}
 };
 const bass=[55,0,55,65.4,73.4,0,65.4,0,49,0,49,58.3,65.4,0,58.3,0];
 const mel=[0,440,0,392,349,0,392,0,0,330,349,0,392,0,523,0];
@@ -824,6 +825,93 @@ function loop(now){const dt=Math.min(3,(now-last)/16.67);last=now;t+=dt;
   shake*=Math.pow(.86,dt);flash*=Math.pow(.88,dt);zoom*=Math.pow(.9,dt);
   if(hitstop>0)hitstop-=dt;else{let ts=dt;if(slowmo>0){slowmo-=dt;ts*=.4}step(ts)}
   draw();requestAnimationFrame(loop)}
+/* ---------- unlocks: lifetime stats, milestones, toasts, end-of-run chips and the customise screen.
+   Everything lives in localStorage behind try/catch, so private windows still play (they just forget). ---------- */
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const STAT0={runs:0,poos:0,gold:0,best:0,combo:0,dodged:0,babies:0,zeros:0};
+const stats=Object.assign({},STAT0,LS.get('plopStats',{}));
+for(const k in STAT0)stats[k]=Number.isFinite(+stats[k])&&+stats[k]>0?Math.floor(+stats[k]):0;
+stats.best=Math.max(stats.best,best||0);
+const REQ={runs:n=>`Play ${n} runs`,poos:n=>`Catch ${n} poos`,gold:n=>`Catch ${n} golden poos`,best:n=>`Score ${n} in one run`,combo:n=>`Hit a ${n} catch combo`,
+  dodged:n=>`Dodge ${n} nasties`,babies:n=>`Let ${n} ${emma?'Coles':'babies'} fall safely past`,zeros:()=>'Finish a run on zero points. Yes, really'};
+const ALL=[...TOILET_ORDER.map(id=>['t',id]),...SCENE_ORDER.map(id=>['b',id])];
+const itm=(k,id)=>k==='t'?TOILETS[id]:SCENES[id];
+const has=(k,id)=>{const r=itm(k,id).req;return !r||stats[r[0]]>=r[1]};
+const got=new Set(LS.get('plopGot',[])),fresh=new Set(LS.get('plopNew',[]));let runGot=[];
+const look=Object.assign({t:'classic',b:'pink'},LS.get('plopLook',{}));
+if(!TOILETS[look.t]||!has('t',look.t))look.t='classic';if(!SCENES[look.b]||!has('b',look.b))look.b='pink';
+// anything already earned (say from an old best score) shows up as new in the closet, without a toast
+for(const [k,id] of ALL){const key=k+':'+id;if(itm(k,id).req&&has(k,id)&&!got.has(key)){got.add(key);fresh.add(key)}}
+function saveAll(){LS.set('plopStats',stats);LS.set('plopGot',[...got]);LS.set('plopNew',[...fresh]);LS.set('plopLook',look)}
+saveAll();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveAll()});
+function checkUnlocks(){let n=0;
+  for(const [k,id] of ALL){const key=k+':'+id;if(itm(k,id).req&&!got.has(key)&&has(k,id)){got.add(key);fresh.add(key);runGot.push([k,id]);n++;if(running)toast(k,id)}}
+  if(n){saveAll();custBadge()}}
+function custBadge(){const d=$('cdot');d.textContent=fresh.size;d.classList.toggle('hidden',!fresh.size);$('cust').setAttribute('aria-label',fresh.size?`Customise, ${fresh.size} new`:'Customise')}
+function equip(k,id){if(!has(k,id))return;const ch=look[k]!==id;look[k]=id;saveAll();if(k==='b'&&ch)buildBG()}
+
+// thumbnails: rooms at a virtual 640x480, toilets on a plain warm wall. Cached; 240x180 drawn at 2x.
+const thumbs={};
+function thumb(k,id){const key=k+':'+id;if(thumbs[key])return thumbs[key];
+  const cv=document.createElement('canvas');cv.width=480;cv.height=360;const c2=cv.getContext('2d');
+  if(k==='b'){const s=SCENES[id];c2.scale(.75,.75);const i=s.build(c2,640,480,410);c2.save();s.light(c2,i,40,640,480);c2.restore()}
+  else{const T=TOILETS[id];c2.scale(2,2);c2.fillStyle=G(c2,0,0,0,150,'#f7e2d0','#e7c1a6');c2.fillRect(0,0,240,152);c2.fillStyle=G(c2,0,152,0,180,'#c99a7c','#a07258');c2.fillRect(0,152,240,28);
+    c2.translate(120,156);c2.scale(.62,.62);c2.fillStyle=RG(c2,0,0,5,0,0,80,'rgba(0,0,0,.4)','rgba(0,0,0,0)');c2.beginPath();c2.ellipse(0,0,80,14,0,0,7);c2.fill();
+    if(T.bob)c2.translate(0,-4);T.draw(c2);if(T.fx){c2.save();T.fx(c2,40);c2.restore()}}
+  return thumbs[key]=cv}
+function badge(k,id,px){const cv=document.createElement('canvas');cv.width=cv.height=px;const th=thumb(k,id),s=th.height;cv.getContext('2d').drawImage(th,(th.width-s)/2,0,s,s,0,0,px,px);return cv}
+
+// mid-run toast: never blocks play (pointer-events off), at most three, gone after 3s
+function toast(k,id){const box=$('toasts');while(box.children.length>=3)box.firstChild.remove();
+  const el=document.createElement('div');el.className='toast';const d=document.createElement('div'),sm=document.createElement('small'),b=document.createElement('b');
+  sm.textContent=k==='t'?'New toilet unlocked':'New room unlocked';b.textContent=itm(k,id).name;d.append(sm,b);el.append(badge(k,id,92),d);box.append(el);
+  burst(W/2,Math.max(90,H*.14),'255,214,90',26,7,1);if(A)sfx.unlock();
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),450)},3000)}
+
+// end screen: one chip per thing earned this run; tap to use it straight away
+function showGot(){const g=$('got'),box=g.querySelector('.chips');box.innerHTML='';if(!runGot.length){g.classList.add('hidden');return}
+  const sync=()=>{for(const c of box.children)c.setAttribute('aria-pressed',look[c.dataset.k]===c.dataset.id)};
+  for(const [k,id] of runGot){const c=document.createElement('button');c.type='button';c.className='chip';c.dataset.k=k;c.dataset.id=id;
+    const s=document.createElement('span'),sm=document.createElement('small');sm.textContent=k==='t'?'Toilet':'Room';s.append(sm,itm(k,id).name);c.append(badge(k,id,92),s);
+    c.onclick=()=>{equip(k,id);fresh.delete(k+':'+id);saveAll();custBadge();sync()};box.append(c)}
+  sync();g.classList.remove('hidden')}
+
+// customise screen
+const LOCK='<svg class="lk" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><rect x="4" y="10" width="16" height="12" rx="3" fill="currentColor"/></svg>';
+let tab='t';const seenNow=new Set();
+const closetOpen=()=>!$('closet').classList.contains('hidden');
+function openCloset(){$('closet').classList.remove('hidden');renderCloset();drawPreview();$('cldone').focus()}
+function closeCloset(){for(const s of seenNow)fresh.delete(s);seenNow.clear();saveAll();custBadge();$('closet').classList.add('hidden');$('cust').focus()}
+function renderCloset(){const g=$('grid'),st=g.scrollTop,order=tab==='t'?TOILET_ORDER:SCENE_ORDER;
+  for(const [b,k,o] of [[$('tabt'),'t',TOILET_ORDER],[$('tabb'),'b',SCENE_ORDER]]){b.setAttribute('aria-selected',tab===k);b.querySelector('small').textContent=` ${o.filter(id=>has(k,id)).length}/${o.length}`}
+  g.innerHTML='';
+  for(const id of order){const it=itm(tab,id),ok=has(tab,id),key=tab+':'+id,on=look[tab]===id;
+    const b=document.createElement('button');b.type='button';b.className='tile'+(ok?'':' lock')+(on?' on':'');
+    const th=document.createElement('span');th.className='th';th.append(thumb(tab,id));if(!ok)th.insertAdjacentHTML('beforeend',LOCK);
+    const nm=document.createElement('span');nm.textContent=it.name;const rq=document.createElement('span');rq.className='req';b.append(th,nm,rq);
+    if(ok){rq.textContent=on?'In use':'Tap to use';b.setAttribute('aria-pressed',on);
+      if(fresh.has(key)){const n=document.createElement('span');n.className='new';n.textContent='New!';b.append(n);seenNow.add(key)}}
+    else{const [s,n]=it.req,v=Math.min(stats[s],n);rq.textContent=REQ[s](n);
+      const bar=document.createElement('span');bar.className='bar';const i=document.createElement('i');i.style.width=(v/n*100)+'%';bar.append(i);
+      const num=document.createElement('span');num.className='num';num.textContent=`${v}/${n}`;b.append(bar,num);
+      b.setAttribute('aria-label',`${it.name}, locked. ${REQ[s](n)}: ${v} of ${n}`)}
+    b.onclick=()=>{if(!ok){b.classList.remove('no');void b.offsetWidth;b.classList.add('no');return}equip(tab,id);renderCloset();drawPreview()};
+    g.append(b)}
+  g.scrollTop=st;
+  $('clstats').textContent=`Runs ${stats.runs} · Poos ${stats.poos} · Golden ${stats.gold} · Best ${stats.best} · Best combo ${stats.combo} · Dodged ${stats.dodged}`}
+function drawPreview(){const cv=$('clprev'),pw=cv.clientWidth,ph=cv.clientHeight;if(!pw||!ph)return;const d=Math.min(devicePixelRatio||1,2);cv.width=pw*d;cv.height=ph*d;
+  const k=cv.getContext('2d'),VH=460,VW=pw/ph*VH,s=ph/VH;k.setTransform(d*s,0,0,d*s,0,0);
+  const sc=SCENES[look.b],i=sc.build(k,VW,VH,VH-70);k.save();sc.light(k,i,40,VW,VH);k.restore();
+  const T=TOILETS[look.t];k.save();k.translate(VW/2,VH-66);k.fillStyle=RG(k,0,0,5,0,0,80,'rgba(0,0,0,.45)','rgba(0,0,0,0)');k.beginPath();k.ellipse(0,0,80,14,0,0,7);k.fill();
+  if(T.bob)k.translate(0,-4);T.draw(k);if(T.fx){k.save();T.fx(k,40);k.restore()}k.restore();
+  k.fillStyle=RG(k,VW/2,VH*.45,Math.min(VW,VH)*.3,VW/2,VH*.5,Math.max(VW,VH)*.75,'rgba(0,0,0,0)',`rgba(10,5,0,${sc.vig})`);k.fillRect(0,0,VW,VH)}
+$('cust').onclick=openCloset;$('cldone').onclick=closeCloset;
+$('tabt').onclick=()=>{tab='t';$('grid').scrollTop=0;renderCloset()};$('tabb').onclick=()=>{tab='b';$('grid').scrollTop=0;renderCloset()};
+addEventListener('keydown',e=>{if(e.key==='Escape'&&closetOpen()){e.preventDefault();closeCloset()}});
+addEventListener('resize',()=>{if(closetOpen())drawPreview()});
+custBadge();
+
 /* ---------- leaderboard ---------- */
 const API='https://theshow-vps.pleco-rooster.ts.net:8443/scores';
 let catches=0,runStart=0,lastName=(()=>{try{return localStorage.plopName||''}catch(e){return ''}})();
@@ -844,9 +932,13 @@ function end(){running=false;lastRun={score,catches,ms:Math.round(performance.no
   if(score>0){$('name').value=lastName;$('send').disabled=false;$('submit').classList.remove('hidden');note('')}else{$('submit').classList.add('hidden');note('')}
   loadBoard();if(A)setTimeout(sfx.flush,250);if(score>best){best=score;try{localStorage.plopBest=best}catch(e){}}
   poos=poos.filter(p=>p.deco);
+  for(const el of $('toasts').children)el.classList.add('out');setTimeout(()=>$('toasts').replaceChildren(),450);
+  stats.runs++;if(score===0)stats.zeros++;stats.best=Math.max(stats.best,best);checkUnlocks();saveAll();showGot();
+  if(runGot.length){burst(W/2,H*.3,'255,214,90',50,11,1);if(A)setTimeout(sfx.unlock,900)}
   $('title').textContent='What a mess';$('msg').textContent='You caught '+score+' plops. Best: '+best+'. Grab the mop and go again.';$('go').textContent='Flush and retry';$('overlay').classList.remove('hidden')}
-$('go').onclick=()=>{reset();poos=[];catches=0;runStart=performance.now();running=true;$('update').classList.add('hidden');$('submit').classList.add('hidden');$('board').classList.add('hidden');note('');startMusic();$('overlay').classList.add('hidden');$('go').blur()};
-addEventListener('keydown',e=>{if(e.target.id==='emma')return;if(!running&&(e.key==='Enter'||e.key===' ')){e.preventDefault();$('go').click()}});
+$('go').onclick=()=>{if(closetOpen())return;reset();poos=[];catches=0;runGot=[];$('got').classList.add('hidden');runStart=performance.now();running=true;$('update').classList.add('hidden');$('submit').classList.add('hidden');$('board').classList.add('hidden');note('');startMusic();$('overlay').classList.add('hidden');$('go').blur()};
+// Enter/Space starts a run, unless the closet is open or focus is on another control (Emma, Customise, chips, changelog)
+addEventListener('keydown',e=>{if(closetOpen()||e.target.closest?.('button,input,summary,a'))return;if(!running&&(e.key==='Enter'||e.key===' ')){e.preventDefault();$('go').click()}});
 if(matchMedia('(pointer:coarse)').matches)$('msg').textContent='Drag your finger anywhere to slide the toilet under the falling poos. Tiny ones are worth two, golden ones five. Dodge the pads, wipes, goldfish and babies: catching them costs points. Miss three poos and the floor\'s ruined.';
 /* ---------- Emma mode: Cole's face falls instead of the babies ---------- */
 function setEmma(on){emma=on;try{localStorage.plopEmma=on?'1':''}catch(e){}
@@ -855,7 +947,7 @@ function setEmma(on){emma=on;try{localStorage.plopEmma=on?'1':''}catch(e){}
 $('emma').onclick=()=>setEmma(!emma);
 setEmma(emma);
 /* ---------- update check: version.json sits next to the page; never interrupts a run ---------- */
-const VERSION='1.7.1';let newVer=null;
+const VERSION='1.8';let newVer=null;
 function showUpdate(){if(!newVer||running||!$('update').classList.contains('hidden'))return;$('upmsg').textContent='Version '+newVer+' is out';$('update').classList.remove('hidden')}
 function checkUpdate(){if(location.protocol==='file:')return;fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.version&&d.version!==VERSION){newVer=d.version;showUpdate()}}).catch(()=>{})}
 $('upgo').onclick=()=>location.reload();
