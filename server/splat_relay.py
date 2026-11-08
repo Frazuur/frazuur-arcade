@@ -318,6 +318,8 @@ class Relay:
             (headers["sec-websocket-key"] + GUID).encode()).digest()).decode()
         writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                       "Connection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n").encode())
+        # keep the kernel-side backlog small so the 48 MB queue budget really bounds memory
+        writer.transport.set_write_buffer_limits(high=16384)
         client = Client(self, reader, writer)
         self.clients.add(client)
         try:

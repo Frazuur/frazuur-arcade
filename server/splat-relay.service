@@ -11,7 +11,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-MemoryMax=128M
+MemoryMax=256M
 LimitNOFILE=4096
 
 [Install]
