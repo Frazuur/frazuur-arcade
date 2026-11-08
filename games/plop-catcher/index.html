@@ -837,7 +837,7 @@ const REQ={runs:n=>`Play ${n} runs`,poos:n=>`Catch ${n} poos`,gold:n=>`Catch ${n
 const ALL=[...TOILET_ORDER.map(id=>['t',id]),...SCENE_ORDER.map(id=>['b',id])];
 const itm=(k,id)=>k==='t'?TOILETS[id]:SCENES[id];
 const has=(k,id)=>{const r=itm(k,id).req;return !r||stats[r[0]]>=r[1]};
-const got=new Set(LS.get('plopGot',[])),fresh=new Set(LS.get('plopNew',[]));let runGot=[];
+const arr=v=>Array.isArray(v)?v:[],got=new Set(arr(LS.get('plopGot',[]))),fresh=new Set(arr(LS.get('plopNew',[])));let runGot=[];
 const look=Object.assign({t:'classic',b:'pink'},LS.get('plopLook',{}));
 if(!TOILETS[look.t]||!has('t',look.t))look.t='classic';if(!SCENES[look.b]||!has('b',look.b))look.b='pink';
 // anything already earned (say from an old best score) shows up as new in the closet, without a toast
@@ -881,8 +881,10 @@ function showGot(){const g=$('got'),box=g.querySelector('.chips');box.innerHTML=
 const LOCK='<svg class="lk" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><rect x="4" y="10" width="16" height="12" rx="3" fill="currentColor"/></svg>';
 let tab='t';const seenNow=new Set();
 const closetOpen=()=>!$('closet').classList.contains('hidden');
-function openCloset(){$('closet').classList.remove('hidden');renderCloset();drawPreview();$('cldone').focus()}
-function closeCloset(){for(const s of seenNow)fresh.delete(s);seenNow.clear();saveAll();custBadge();$('closet').classList.add('hidden');$('cust').focus()}
+// keep focus inside the closet: everything else on the page goes inert while it is open
+function backInert(on){for(const el of document.body.children)if(el.id!=='closet')el.inert=on}
+function openCloset(){backInert(true);$('closet').classList.remove('hidden');renderCloset();drawPreview();$('cldone').focus()}
+function closeCloset(){for(const s of seenNow)fresh.delete(s);seenNow.clear();saveAll();custBadge();$('closet').classList.add('hidden');backInert(false);$('cust').focus()}
 function renderCloset(){const g=$('grid'),st=g.scrollTop,order=tab==='t'?TOILET_ORDER:SCENE_ORDER;
   for(const [b,k,o] of [[$('tabt'),'t',TOILET_ORDER],[$('tabb'),'b',SCENE_ORDER]]){b.setAttribute('aria-selected',tab===k);b.querySelector('small').textContent=` ${o.filter(id=>has(k,id)).length}/${o.length}`}
   g.innerHTML='';
@@ -911,6 +913,9 @@ $('tabt').onclick=()=>{tab='t';$('grid').scrollTop=0;renderCloset()};$('tabb').o
 addEventListener('keydown',e=>{if(e.key==='Escape'&&closetOpen()){e.preventDefault();closeCloset()}});
 addEventListener('resize',()=>{if(closetOpen())drawPreview()});
 custBadge();
+// build the item thumbnails while idle, so a mid-run unlock toast never has to render a room on a catch frame
+{const todo=[...TOILET_ORDER.map(i=>['t',i]),...SCENE_ORDER.map(i=>['b',i])],idle=window.requestIdleCallback||(f=>setTimeout(f,60));
+ const next=()=>{if(!todo.length)return;if(!running){const [k,i]=todo.shift();thumb(k,i)}idle(next)};idle(next)}
 
 /* ---------- leaderboard ---------- */
 const API='https://theshow-vps.pleco-rooster.ts.net:8443/scores';
