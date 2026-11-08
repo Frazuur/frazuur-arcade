@@ -1,0 +1,18 @@
+[Unit]
+Description=Splat! multiplayer relay (WebSocket)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/splat-relay/splat_relay.py
+Environment=PORT=8788
+DynamicUser=yes
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=256M
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
