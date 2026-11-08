@@ -194,6 +194,19 @@ button:focus-visible{outline:4px solid var(--gold);outline-offset:4px}
 .poChip .l i::after{content:"";position:absolute;left:2.5px;top:1px;width:4px;height:3px;border-radius:50%;background:#8a7a64}
 .poChip .l i.gone{background:rgba(255,248,230,.16)}
 .poChip .l i.gone::after{background:transparent}
+.poChip .l i.half{background:linear-gradient(90deg,#d9d3c4,#fffdf6 45%,#e6e0d0) 0 0/50% 100% no-repeat,rgba(255,248,230,.16)}
+/* five or more players on a narrow screen: compact chips in up to two rows, so every rival stays in view */
+@media not all and (min-width:900px) and (min-height:560px){
+  #poRivals.many{flex-wrap:wrap;justify-content:center;gap:4px;padding:2px 10px 6px;overflow:visible}
+  #poRivals.many .poChip{font-size:12px;padding:2px 7px;gap:4px;box-shadow:0 2px 0 #2a1708,0 4px 10px rgba(0,0,0,.3)}
+  #poRivals.many .poChip .n{max-width:5ch}
+  #poRivals.many .poChip .l{gap:2px}
+  #poRivals.many .poChip .l i{width:6px;height:8px}
+  #poRivals.many .poChip .l i::after{left:1.5px;width:3px;height:2px}
+  #poRivals.many .poChip b{min-width:0}
+  #poRivals.many .poChip.lead{box-shadow:0 0 0 2px var(--gold) inset,0 2px 0 #2a1708}
+  #poRivals.many .poChip.watch{box-shadow:0 0 0 2px #f06292 inset,0 2px 0 #2a1708}
+}
 .poChip.lead{box-shadow:0 0 0 2px var(--gold) inset,0 3px 0 #2a1708,0 6px 14px rgba(0,0,0,.35)}
 .poChip.watch{box-shadow:0 0 0 3px #f06292 inset,0 3px 0 #2a1708,0 6px 14px rgba(0,0,0,.35)}
 .poChip.hit{animation:poHit .65s cubic-bezier(.36,.07,.19,.97)}
@@ -1220,7 +1233,7 @@ function draw(){
 let last=performance.now();
 function loop(now){const dt=Math.min(3,(now-last)/16.67);last=now;t+=dt;
   shake*=Math.pow(.86,dt);flash*=Math.pow(.88,dt);zoom*=Math.pow(.9,dt);
-  if(PO.spec)PO.view(dt);else if(hitstop>0)hitstop-=dt;else{let ts=dt;if(slowmo>0){slowmo-=dt;ts*=.4}step(ts)}
+  if(PO.spec){try{PO.view(dt)}catch(e){poos=[];hazards=[]}}else if(hitstop>0)hitstop-=dt;else{let ts=dt;if(slowmo>0){slowmo-=dt;ts*=.4}step(ts)}
   draw();requestAnimationFrame(loop)}
 /* ---------- unlocks: lifetime stats, milestones, toasts, end-of-run chips and the customise screen.
    Everything lives in localStorage behind try/catch, so private windows still play (they just forget). ---------- */
@@ -1422,20 +1435,21 @@ function poTick(){if(!PO.id)return;if(PO.busy){PO.again=true;return}clearTimeout
   const b={id:PO.id,token:PO.token,score,lives:Math.max(0,3-miss),catches,alive:PO.alive};
   if(running&&PO.alive)b.snap=poSnap();if(PO.watch&&PO.phase==='playing')b.watch=PO.watch;
   const t0=Date.now();
-  poSend('tick',b).then(d=>{const t1=Date.now(),o=d.now-(t0+t1)/2;PO.off=PO.fails===0&&PO.off?PO.off*.8+o*.2:o;PO.fails=0;poNet(false);poState(d)})
+  poSend('tick',b).then(d=>{if(!Array.isArray(d.players)||typeof d.now!=='number')throw new Error('bad reply');const t1=Date.now(),o=d.now-(t0+t1)/2;PO.off=PO.fails===0&&PO.off?PO.off*.8+o*.2:o;PO.fails=0;poNet(false);poState(d)})
     .catch(e=>{if(e.code===403)return poRejoin();if(++PO.fails>=2)poNet(true)})
     .finally(()=>{PO.busy=false;if(!PO.id)return;if(PO.again){PO.again=false;poTick()}else PO.timer=setTimeout(poTick,poRate())})}
 function poNet(on){$('poNet').classList.toggle('hidden',!on||!PO.on)}
 function poMsg(t){$('poMsg').textContent=t||''}
 function poRejoin(){PO.id=null;if(!PO.on||PO.rejoining||!PO.name)return poUi();PO.rejoining=true;poJoin(PO.name).finally(()=>PO.rejoining=false)}
 function poJoin(name){PO.name=name;poMsg('Joining…');
-  return poSend('join',{name}).then(d=>{PO.id=d.you;PO.token=d.token;PO.fails=0;PO.phase='off';poNet(false);poMsg('');poState(d);poTick()})
+  return poSend('join',{name}).then(d=>{if(!Array.isArray(d.players)||!d.token)throw new Error('bad reply');PO.id=d.you;PO.token=d.token;PO.fails=0;PO.phase='off';poNet(false);poMsg('');poState(d);poTick()})
     .catch(e=>{poMsg(e.code?e.message:'Couldn\'t reach the Poo Off room. Check your connection and try again.');poUi()})}
 function poRivals(){return PO.players.filter(p=>p.inMatch&&p.id!==PO.id)}
 function poState(d){if(!PO.on)return;const prev=PO.phase,ph=d.phase;
   PO.phase=ph;PO.seed=d.seed;PO.startAt=d.startAt;PO.players=d.players||[];
   const me=PO.players.find(p=>p.id===PO.id);if(!me)return poRejoin();
   PO.inMatch=me.inMatch;
+  if(ph==='playing'&&me.alive===false&&running&&PO.alive)PO.out(); // the server says we're out: agree with it
   if(ph!==prev){PO.back=false;
     if(ph==='results'){poStats();running=false;PO.spec=false;poos=[];hazards=[];poResults()}
     if(ph==='lobby'||ph==='countdown'){poStats();if(running||prev==='results'||prev==='off')reset();running=false;PO.alive=false;PO.spec=false;poos=[];hazards=[];
@@ -1451,13 +1465,14 @@ function poWatch(id){if(PO.watch===id)return;PO.watch=id;PO.snaps=[];PO.objs.cle
 function poHit(id){const el=PO.chips[id];if(!el)return;el.classList.remove('hit');void el.offsetWidth;el.classList.add('hit');
   clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('hit'),700)}
 function poChips(){const box=$('poRivals'),rv=poRivals(),top=Math.max(0,...PO.players.filter(p=>p.inMatch).map(p=>p.score));
+  box.classList.toggle('many',rv.length>3);
   const show=PO.inMatch||PO.phase==='playing';box.classList.toggle('hidden',!(show&&rv.length&&(PO.phase==='countdown'||PO.phase==='playing')));
   for(const p of rv){let el=PO.chips[p.id];
     if(!el){el=document.createElement('button');el.type='button';el.className='poChip';el.dataset.id=p.id;
       el.innerHTML='<span class="n"></span><span class="l"><i></i><i></i><i></i></span><b></b><span class="x"></span>';
       el.onclick=()=>{if(PO.spec&&p.alive!==false){poWatch(el.dataset.id);poUi()}};box.appendChild(el);PO.chips[p.id]=el}
     el.querySelector('.n').textContent=p.name;el.querySelector('b').textContent=p.score;
-    el.querySelectorAll('.l i').forEach((i,n)=>i.classList.toggle('gone',n>=p.lives));
+    el.querySelectorAll('.l i').forEach((i,n)=>{i.classList.toggle('gone',n>=Math.ceil(p.lives));i.classList.toggle('half',n===Math.floor(p.lives)&&p.lives%1>0)});
     el.classList.toggle('out',!p.alive);el.classList.toggle('lead',p.alive&&p.score>0&&p.score===top);el.classList.toggle('watch',PO.spec&&p.id===PO.watch);
     el.setAttribute('aria-label',p.name+': '+p.score+' points, '+(p.alive?p.lives+(p.lives===1?' life':' lives')+' left':'out'))}
   for(const id in PO.chips)if(!rv.some(p=>p.id===id)){PO.chips[id].remove();delete PO.chips[id]}}
@@ -1506,6 +1521,8 @@ $('poLeave').onclick=()=>{poStats();poLeaveRoom();PO.on=false;PO.phase='off';PO.
 $('poBack').onclick=()=>{PO.back=true;poUi()};
 addEventListener('pagehide',()=>poLeaveRoom(true));
 {const b=document.createElement('button');b.id='poGo';b.type='button';b.textContent='Poo Off';b.onclick=poOpen;$('go').after(b)}
+// a hidden tab can't keep up with the room: forfeit the round rather than stall everyone
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&PO.on&&running&&PO.alive&&PO.phase==='playing'){PO.out();poTick()}});
 /* ==== /POO OFF ==== */
 rs();toiletX=tx=W/2;hud();loadBoard();requestAnimationFrame(loop);
 </script>

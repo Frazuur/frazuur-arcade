@@ -35,9 +35,10 @@ def limited(ip, kind="scores", most=6, window=60):
     with lock:
         ts = [t for t in hits.get(key, []) if now - t < window]
         ts.append(now)
-        hits[key] = ts
-        if len(hits) > 5000:
-            hits.clear()
+        hits.pop(key, None)
+        hits[key] = ts  # re-insert so dict order is oldest-used first
+        while len(hits) > 5000:
+            del hits[next(iter(hits))]
     return len(ts) > most
 
 CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -67,6 +68,9 @@ LIMITS = {"tick": (45.0, 60.0), "tickp": (12.0, 20.0), "pooff": (2.0, 6.0),
 buckets, blk = {}, threading.Lock()
 last_prune = [time.time()]
 
+def no_const(c):
+    raise ValueError("NaN/Infinity not allowed")
+
 def allow_origin(o):
     return o in ORIGINS or (DEV and bool(DEV_RE.match(o)))
 
@@ -77,9 +81,10 @@ def take(group, who):
         if now - last_prune[0] > 60:
             for k in [k for k, (t, at) in buckets.items() if now - at > 3600]:
                 del buckets[k]
-            if len(buckets) > 20000:
-                buckets.clear()
             last_prune[0] = now
+        if len(buckets) > 20000:  # evict the least recently used, never everyone
+            for k in sorted(buckets, key=lambda k: buckets[k][1])[:5000]:
+                del buckets[k]
         tok, at = buckets.get((group, who), (burst, now))
         tok = min(burst, tok + (now - at) * rate)
         ok = tok >= 1
@@ -136,7 +141,7 @@ class H(BaseHTTPRequestHandler):
         if n > BODY_MAX:
             return self.bare(413)
         try:
-            d = json.loads(self.rfile.read(n))
+            d = json.loads(self.rfile.read(n), parse_constant=no_const)
         except Exception:
             d = None
         if not isinstance(d, dict):
@@ -151,7 +156,7 @@ class H(BaseHTTPRequestHandler):
     def do_CONNECT(self): self.bare(405)
 
     def reply(self, code, body):
-        data = json.dumps(body).encode()
+        data = json.dumps(body, allow_nan=False).encode()
         self.send_response(code)
         self.cors()
         self.send_header("Content-Type", "application/json")
@@ -204,8 +209,6 @@ class H(BaseHTTPRequestHandler):
             return self.reply(429, {"error": "Slow down a bit, then try again."})
         if int(self.headers.get("Content-Length")) > PO_BODY:
             return self.bare(413)
-        if act == "tick" and not take("tickp", str(d.get("token", ""))[:64]):
-            return self.reply(429, {"error": "Slow down a bit, then try again."})
         code, body = po_handle(act, d)
         self.reply(code, body)
 
@@ -216,6 +219,7 @@ class H(BaseHTTPRequestHandler):
 # Phases: lobby -> countdown -> playing -> results -> lobby. Clients poll /pooff/tick about 5x a second.
 PO_MAX, PO_STALE, PO_COUNT_MS, PO_RESULTS_MS, PO_SNAP, PO_BODY = 8, 6.0, 3000, 12000, 4096, 6144
 PO_STALE = float(os.environ.get("PO_STALE", PO_STALE))  # tests on a loaded machine only
+PO_MATCH_MS = int(os.environ.get("PO_MATCH_MS", 20 * 60 * 1000))  # a match never runs past 20 minutes
 po_lock = threading.Lock()
 room = {"phase": "lobby", "seed": 0, "startAt": 0, "endAt": 0, "players": {}, "n": 0}
 
@@ -243,9 +247,10 @@ def po_step(now):
         alive = [p for p in m if p["alive"]]
         if not m:
             po_to_lobby()
-        elif room["phase"] == "playing" and (not alive or (len(m) >= 2 and len(alive) == 1 and all(
-                alive[0]["score"] > p["score"] for p in m if p is not alive[0]))):
-            # everyone's out, or the last one standing is already ahead of everyone: no point carrying on
+        elif room["phase"] == "playing" and (not alive or now - room["startAt"] >= PO_MATCH_MS or (
+                len(m) >= 2 and len(alive) == 1 and all(alive[0]["score"] > p["score"] for p in m if p is not alive[0]))):
+            # everyone's out, the last one standing is already ahead of everyone, or the 20 minute cap:
+            # rank everyone as they stand
             m.sort(key=lambda p: (-p["score"], 0 if p["alive"] else 1, -(p["outAt"] or 0), p["n"]))
             for i, p in enumerate(m):
                 p["place"] = i + 1
@@ -274,7 +279,30 @@ def po_state(now, me, watch=None):
 def po_int(v, lo, hi):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise ValueError
-    return max(lo, min(hi, int(v)))
+    try:
+        return max(lo, min(hi, int(v)))
+    except (OverflowError, TypeError):
+        raise ValueError
+
+def po_half(v, lo, hi):
+    """Lives come in halves (a tiny poo costs half a roll)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+        raise ValueError
+    return max(lo, min(hi, round(float(v) * 2) / 2))
+
+def po_snap(s):
+    """Return a clean copy of a snapshot {t, o: [[id, type, x, y], ...]}, or None if it isn't exactly that."""
+    if not isinstance(s, dict) or set(s) != {"t", "o"}:
+        return None
+    t, o = s["t"], s["o"]
+    ok = lambda v, lo, hi: type(v) is int and lo <= v <= hi
+    if not ok(t, -500, 1500) or not isinstance(o, list) or len(o) > 40:
+        return None
+    for q in o:
+        if not (isinstance(q, list) and len(q) == 4 and ok(q[0], 0, 2 ** 31) and ok(q[1], 0, 30)
+                and ok(q[2], -1000, 2000) and ok(q[3], -1000, 2000)):
+            return None
+    return {"t": t, "o": [list(q) for q in o]}
 
 def po_handle(act, d):
     now = po_ms()
@@ -294,8 +322,11 @@ def po_handle(act, d):
             ps[p["id"]] = p
             return 200, dict(po_state(now, p), token=p["token"])
         p = ps.get(d.get("id")) if isinstance(d.get("id"), str) else None
-        if not p or not secrets.compare_digest(str(d.get("token", "")), p["token"]):
+        tok = d.get("token")
+        if not p or not isinstance(tok, str) or not hmac.compare_digest(tok.encode(), p["token"].encode()):
             return 403, {"error": "You're not in the room."}
+        if act == "tick" and not take("tickp", p["id"]):
+            return 429, {"error": "Slow down a bit, then try again."}
         p["seen"] = time.time()
         if act == "leave":
             if p["inMatch"] and room["phase"] in ("countdown", "playing", "results"):
@@ -322,17 +353,20 @@ def po_handle(act, d):
                 elapsed = max(0, now - room["startAt"])
                 catches = po_int(d.get("catches"), 0, min(5000, elapsed // 250 + 1))
                 score = po_int(d.get("score"), 0, min(50000, catches * 15))
-                lives = po_int(d.get("lives"), 0, p["lives"])
+                lives = po_half(d.get("lives"), 0, p["lives"])
+                if not isinstance(d.get("alive"), bool):
+                    raise ValueError
             except ValueError:
                 return 400, {"error": "That didn't look right."}
             p.update(score=score, catches=catches, lives=lives)
-            if d.get("alive") is False or lives == 0:
+            if d["alive"] is False or lives <= 0:
                 p.update(alive=False, lives=0, outAt=now)
-            snap = d.get("snap")
-            if isinstance(snap, dict) and len(json.dumps(snap, separators=(",", ":"))) <= PO_SNAP:
+            snap = po_snap(d.get("snap"))
+            if snap is not None and len(json.dumps(snap, separators=(",", ":"))) <= PO_SNAP:
                 p.update(snap=snap, snapAt=now)
             po_step(now)
-        return 200, po_state(now, p, d.get("watch"))
+        w = d.get("watch")
+        return 200, po_state(now, p, w if isinstance(w, str) and len(w) <= 16 else None)
 
 if __name__ == "__main__":
     import sys
