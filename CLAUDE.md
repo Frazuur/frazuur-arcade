@@ -25,6 +25,14 @@ GitHub Pages serves from two public repos (free plan), so `./deploy.sh`
 mirrors this repo into them: `./deploy.sh site|plop|server|all`. Commit here
 first, then deploy. Deploying is part of finishing a change Dean asked for.
 
+The API wants an app key (`X-Plop-Key`) once `PLOP_KEY` is set in
+`/etc/plop-scores.env` on the box. The plain key lives only in
+`~/.config/frazuur-arcade/plop_key` (mode 600, override with `PLOP_KEY_FILE`)
+and on the box, never in the repo; pages carry it XOR-obfuscated. Rollout
+order: `./deploy.sh server` (no key yet, so old pages keep working), then
+`./deploy.sh plop` and `./deploy.sh site`, then `./deploy.sh key`.
+`./deploy.sh server` also installs `plop-scores.service` and reloads systemd.
+
 ## Rules for game changes
 
 - Every Plop Catcher release bumps `const VERSION` in `index.html`, adds an
