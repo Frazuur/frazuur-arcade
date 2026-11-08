@@ -53,5 +53,5 @@ case "${1:-}" in
   splat) mirror Frazuur/splat "$ROOT/games/splat" ;;
   relay) relay ;;
   all) server; relay; mirror Frazuur/splat "$ROOT/games/splat"; mirror Frazuur/plop-catcher "$ROOT/games/plop-catcher" "$ROOT/server"; mirror Frazuur/frazuur.github.io "$ROOT/site" ;;
-  *) sed -n '2,12p' "$0"; exit 1 ;;
+  *) sed -n '2,11p' "$0"; exit 1 ;;
 esac
