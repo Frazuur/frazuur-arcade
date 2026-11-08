@@ -22,7 +22,7 @@ mirror() { # <public repo> <source dir> [files published under server/ ...]
   mkdir -p "$WORK"
   if [ ! -d "$dir/.git" ]; then git clone -q "https://github.com/$repo.git" "$dir"; fi
   git -C "$dir" pull -q --ff-only
-  local stage; stage=$(mktemp -d); trap 'rm -rf "$stage"' RETURN
+  local stage; stage=$(mktemp -d); trap 'rm -rf "$stage"; trap - RETURN' RETURN
   rsync -a --exclude __pycache__ "$src/" "$stage/"
   if [ $# -gt 2 ]; then mkdir -p "$stage/server"; cp "${@:3}" "$stage/server/"; fi
   rsync -a --delete --exclude .git "$stage/" "$dir/"
