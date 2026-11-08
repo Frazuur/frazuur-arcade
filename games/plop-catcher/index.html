@@ -1001,8 +1001,8 @@ function burst(px,py,col,n,pow,glow){for(let i=0;i<n;i++){const a=Math.random()*
 function reset(){poos=[];hazards=[];hazSpawn=150;splats=[];bits=[];flies=[];texts=[];rings=[];score=0;miss=0;combo=0;spawn=0;toiletX=tx=W/2;hud()}
 function hud(){$('score').textContent=score+(combo>=5?'  ×'+(combo>=10?3:2):'');
   // tiny poos only cost half a roll, so a half-used roll shows as half a 🧻
-  const left=3-miss,whole=Math.floor(left);
-  $('lives').innerHTML='🧻'.repeat(whole)+(left>whole?'<span class="half">🧻</span>':'')+'💩'.repeat(Math.floor(miss));$('cbar').style.width=Math.min(100,combo*10)+'%'}
+  const m=Math.min(3,miss),left=3-m,whole=Math.floor(left);
+  $('lives').innerHTML='🧻'.repeat(whole)+(left>whole?'<span class="half">🧻</span>':'')+'💩'.repeat(Math.floor(m));$('cbar').style.width=Math.min(100,combo*10)+'%'}
 function popScore(){const s=$('score');s.classList.add('pop');setTimeout(()=>s.classList.remove('pop'),140)}
 const yells=['PLOP!','SPLOSH!','KERPLUNK!','BLOOP!','NICE ONE!','DOOKIE!','FLUSHED!','SPLOOSH!'];
 
@@ -1040,7 +1040,7 @@ function step(ts){
     if(!p.done&&p.y>FLOOR()+6){p.done=1;miss+=p.size<1?.5:1;combo=0;if(running)stats.splats++;shake=22;hitstop=4;flash=1;flashCol='120,60,20';
       splats.push({x:p.x,s:(.6+Math.random()*.5)*(p.size||1),gold:p.gold,g:0,seed:Math.random()*99});burst(p.x,FLOOR(),p.gold?'214,160,30':'107,62,31',36,11);
       for(let k=0;k<3;k++)flies.push({x:p.x,y:FLOOR()-40,a:Math.random()*7,s:.7+Math.random()*.6,ox:p.x});addTxt(p.x,FLOOR()-80,p.size<1?'HALF A ROLL!':'SPLAT!','#c86a3a',p.size<1?38:50);
-      if(A){sfx.splat();if(miss<3)setTimeout(sfx.fart,180)}hud();if(miss>=3)end()}}
+      if(A){sfx.splat();if(miss<3)setTimeout(sfx.fart,180)}hud();if(miss>=3){end();break}}}
   poos=poos.filter(p=>!p.done);
   for(const b of bits){b.x+=b.vx*ts;b.y+=b.vy*ts;if(!b.glow)b.vy+=.32*ts;else b.vy+=.08*ts;b.l-=.022*ts}bits=bits.filter(b=>b.l>0);
   for(const r of rings){r.r+=4*ts;r.l-=.035*ts}rings=rings.filter(r=>r.l>0);
@@ -1103,9 +1103,10 @@ function loop(now){const dt=Math.min(3,(now-last)/16.67);last=now;t+=dt;
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 // v1.9 wiped everyone's unlocks and unlock stats (harder goals, fresh start). plopBest and the leaderboard are kept,
 // but unlock goals only count scores from v1.9 on, so the old best is not merged into stats.best.
-const SAVE=2;if(LS.get('plopSave',1)<SAVE){try{for(const k of ['plopStats','plopGot','plopNew','plopLook','plopDay'])localStorage.removeItem(k)}catch(e){}LS.set('plopSave',SAVE)}
+// v1.9 saves under new key names, so a v1.8 tab left open can't write the old unlocks back.
+const SK=s=>'plop'+s+'2';try{for(const k of ['plopStats','plopGot','plopNew','plopLook','plopDay','plopSave'])localStorage.removeItem(k)}catch(e){}
 const STAT0={runs:0,poos:0,gold:0,best:0,combo:0,dodged:0,babies:0,zeros:0,points:0,splats:0,days:0};
-const stats=Object.assign({},STAT0,LS.get('plopStats',{}));
+const stats=Object.assign({},STAT0,LS.get(SK('Stats'),{}));
 for(const k in STAT0)stats[k]=Number.isFinite(+stats[k])&&+stats[k]>0?Math.floor(+stats[k]):0;
 const REQ={runs:n=>`Play ${n} runs`,poos:n=>`Catch ${n} poos`,gold:n=>`Catch ${n} golden poos`,best:n=>`Score ${n} in one run`,combo:n=>`Hit a ${n} catch combo`,
   dodged:n=>`Dodge ${n} nasties`,babies:n=>`Let ${n} ${emma?'Coles':'babies'} fall safely past`,zeros:n=>`Finish ${n} runs on zero points. Yes, really`,
@@ -1114,12 +1115,12 @@ const ALL=[...TOILET_ORDER.map(id=>['t',id]),...SCENE_ORDER.map(id=>['b',id])];
 const itm=(k,id)=>k==='t'?TOILETS[id]:SCENES[id];
 // once earned, always yours: if a goal is raised later, items already unlocked stay unlocked
 const has=(k,id)=>{const r=itm(k,id).req;return !r||got.has(k+':'+id)||stats[r[0]]>=r[1]};
-const arr=v=>Array.isArray(v)?v:[],got=new Set(arr(LS.get('plopGot',[]))),fresh=new Set(arr(LS.get('plopNew',[])));let runGot=[];
-const look=Object.assign({t:'classic',b:'pink'},LS.get('plopLook',{}));
+const arr=v=>Array.isArray(v)?v:[],got=new Set(arr(LS.get(SK('Got'),[]))),fresh=new Set(arr(LS.get(SK('New'),[])));let runGot=[];
+const look=Object.assign({t:'classic',b:'pink'},LS.get(SK('Look'),{}));let lastDay=LS.get(SK('Day'),'');
 if(!TOILETS[look.t]||!has('t',look.t))look.t='classic';if(!SCENES[look.b]||!has('b',look.b))look.b='pink';
 // anything already earned (say from an old best score) shows up as new in the closet, without a toast
 for(const [k,id] of ALL){const key=k+':'+id;if(itm(k,id).req&&has(k,id)&&!got.has(key)){got.add(key);fresh.add(key)}}
-function saveAll(){LS.set('plopStats',stats);LS.set('plopGot',[...got]);LS.set('plopNew',[...fresh]);LS.set('plopLook',look)}
+function saveAll(){LS.set(SK('Stats'),stats);LS.set(SK('Got'),[...got]);LS.set(SK('New'),[...fresh]);LS.set(SK('Look'),look)}
 saveAll();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)saveAll()});
 function checkUnlocks(){let n=0;
@@ -1216,7 +1217,7 @@ function end(){running=false;lastRun={score,catches,ms:Math.round(performance.no
   poos=poos.filter(p=>p.deco);
   for(const el of $('toasts').children)el.classList.add('out');setTimeout(()=>$('toasts').replaceChildren(),450);
   stats.runs++;if(score===0)stats.zeros++;stats.points+=score;
-  const today=new Date().toDateString();if(LS.get('plopDay','')!==today){stats.days++;LS.set('plopDay',today)}
+  const today=new Date().toDateString();if(lastDay!==today){stats.days++;lastDay=today;LS.set(SK('Day'),today)}
   stats.best=Math.max(stats.best,score);checkUnlocks();saveAll();showGot();
   if(runGot.length){burst(W/2,H*.3,'255,214,90',50,11,1);if(A)setTimeout(sfx.unlock,900)}
   $('title').textContent='What a mess';$('msg').textContent='You caught '+score+' plops. Best: '+best+'. Grab the mop and go again.';$('go').textContent='Flush and retry';$('overlay').classList.remove('hidden')}
