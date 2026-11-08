@@ -34,8 +34,8 @@ Relay -> client:
 
 | t           | fields                                              | meaning |
 |-------------|-----------------------------------------------------|---------|
-| `welcome`   | `room`, `you`, `token`, `host`, `peers`: [{`id`,`name`,`color`}] | after create or join; `peers` includes you |
-| `peer_join` | `peer`: {`id`,`name`,`color`}                       | someone joined (or rejoined) |
+| `welcome`   | `room`, `you`, `token`, `host`, `peers`: [{`id`,`name`,`color`,`on`}] | after create or join; `peers` includes you and seats held for dropped players (`on:false`) |
+| `peer_join` | `peer`: {`id`,`name`,`color`,`on`}                  | someone joined (or rejoined); `on` is always `true` |
 | `peer_leave`| `id`, `gone` (bool)                                 | socket dropped (`gone:false`, may rejoin within 60 s) or left for good (`gone:true`) |
 | `host`      | `id`                                                | the host changed (old host left or dropped); the new host is the longest-connected remaining peer |
 | `msg`       | `from`, `d`                                         | a relayed `send` |
@@ -44,7 +44,14 @@ Relay -> client:
 - Room codes are 4 capital letters from `BCDFGHJKLMNPQRSTVWXZ` (no vowels, so no
   words), unique among live rooms.
 - Peer ids are small integers unique within a room (1..). Names: up to 12 chars,
-  trimmed, letters/digits/space/`.'!?-`. Colour: `#rrggbb`.
+  trimmed, any Unicode letters/digits (so "Zoë" is fine) plus space and `.'!?-`;
+  other characters are removed, empty becomes "Player". Colour: `#rrggbb` (else grey).
+- A rejoiner gets `welcome` (with the current `host`) before anything else; other
+  peers get `host` (if it changed) and then `peer_join`.
+- A socket is closed (1008) after 10 refused `create`/`join` attempts, and may create
+  at most 5 rooms. Fragmented messages may have at most 16 frames; every frame,
+  pings included, counts toward the rate limit. Slow readers are dropped once ~96 KB
+  is queued for them.
 - A dropped socket keeps its seat (id, name, colour) for 60 s for rejoin. A room with
   no connected peers is deleted after 60 s. At most 300 rooms and 2000 sockets.
 - The relay sends WebSocket pings every 20 s and drops sockets silent for 60 s.

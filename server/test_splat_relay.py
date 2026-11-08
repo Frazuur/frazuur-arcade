@@ -137,13 +137,52 @@ class RelayTest(unittest.IsolatedAsyncioTestCase):
         self.assertRegex(w["room"], r"^[BCDFGHJKLMNPQRSTVWXZ]{4}$")
         self.assertEqual(w["you"], 1)
         self.assertEqual(w["host"], 1)
-        self.assertEqual(w["peers"], [{"id": 1, "name": "Dino!", "color": "#aabbcc"}])
+        self.assertEqual(w["peers"], [{"id": 1, "name": "Dino!", "color": "#aabbcc", "on": True}])
         j = await self.ws()
-        j.send({"t": "join", "room": w["room"].lower(), "name": "Bo", "color": "#000000"})
+        j.send({"t": "join", "room": w["room"].lower(), "name": "Zoë 7", "color": "#000000"})
         w2 = await j.recv()
         self.assertEqual((w2["you"], w2["host"], len(w2["peers"])), (2, 1, 2))
         pj = await host.recv()
-        self.assertEqual(pj, {"t": "peer_join", "peer": {"id": 2, "name": "Bo", "color": "#000000"}})
+        self.assertEqual(pj, {"t": "peer_join",
+                              "peer": {"id": 2, "name": "Zoë 7", "color": "#000000", "on": True}})
+
+    async def test_welcome_flags_dropped_seat_and_comes_first(self):
+        code, [(a, wa), (b, _)] = await self.room(2)
+        a.kill()  # host drops; b becomes host
+        self.assertEqual(await b.recv(), {"t": "peer_leave", "id": 1, "gone": False})
+        self.assertEqual(await b.recv(), {"t": "host", "id": 2})
+        b.kill()  # nobody connected; host id stays 2
+        await asyncio.sleep(0.2)
+        a2 = await self.ws()
+        a2.send({"t": "join", "room": code, "name": "Host", "color": "#ff0000", "token": wa["token"]})
+        w = await a2.recv()
+        self.assertEqual((w["t"], w["you"], w["host"]), ("welcome", 1, 1))
+        self.assertEqual({p["id"]: p["on"] for p in w["peers"]}, {1: True, 2: False})
+        self.assertIsNone(await a2.quiet())
+
+    async def test_fragment_flood_closed(self):
+        x = await self.ws()
+        x.frame(0x1, b"", fin=False)
+        for _ in range(16):  # the 17th frame of one message is over the cap
+            x.frame(0x0, b"", fin=False)
+        self.assertEqual(await x.recv(), {"t": "_close", "code": 1009})
+
+    async def test_join_guessing_closed(self):
+        x = await self.ws()
+        for _ in range(10):
+            x.send({"t": "join", "room": "ZZZZ", "name": "A", "color": "#123456"})
+        for _ in range(10):
+            self.assertEqual(await x.recv(), {"t": "error", "code": "no_room"})
+        self.assertEqual(await x.recv(), {"t": "_close", "code": 1008})
+
+    async def test_create_limit(self):
+        x = await self.ws()
+        for _ in range(5):
+            x.send({"t": "create", "name": "A", "color": "#123456"})
+            self.assertEqual((await x.recv())["t"], "welcome")
+            x.send({"t": "leave"})
+        x.send({"t": "create", "name": "A", "color": "#123456"})
+        self.assertEqual(await x.recv(), {"t": "error", "code": "full"})
 
     async def test_broadcast_and_direct(self):
         _, [(a, _), (b, _), (c, _)] = await self.room(3)

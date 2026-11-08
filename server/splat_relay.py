@@ -30,10 +30,14 @@ SEAT_HOLD = 60.0          # seconds a dropped seat is kept
 EMPTY_ROOM = 60.0         # seconds a room with nobody connected lives
 PING_EVERY = 20.0
 SILENT_DROP = 60.0
-SEND_QUEUE = 256          # queued outgoing frames before a slow client is dropped
+SEND_QUEUE_BYTES = 96 * 1024       # queued outgoing bytes before a slow client is dropped
+GLOBAL_QUEUE_BYTES = 48 * 1024 * 1024  # all clients together
+MAX_FRAGMENTS = 16        # frames per fragmented message
+MAX_FAILS = 10            # refused create/join attempts before close (code guessing)
+MAX_CREATES = 5           # rooms one socket may create
 WRITE_TIMEOUT = 10.0
 CODE_LETTERS = "BCDFGHJKLMNPQRSTVWXZ"
-NAME_BAD = re.compile(r"[^A-Za-z0-9 .'!?\-]")
+NAME_EXTRA = set(" .'!?-")
 COLOR_OK = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -52,7 +56,7 @@ def allowed_origin(origin):
 def clean_name(v):
     if not isinstance(v, str):
         return "Player"
-    v = NAME_BAD.sub("", v).strip()[:12].strip()
+    v = "".join(ch for ch in v if ch.isalnum() or ch in NAME_EXTRA).strip()[:12].strip()
     return v or "Player"
 
 
@@ -86,7 +90,7 @@ class Seat:
         self.dropped_at = 0.0
 
     def info(self):
-        return {"id": self.id, "name": self.name, "color": self.color}
+        return {"id": self.id, "name": self.name, "color": self.color, "on": self.client is not None}
 
 
 class Room:
@@ -112,6 +116,7 @@ class Relay:
     def __init__(self):
         self.rooms = {}
         self.clients = set()
+        self.qbytes = 0  # bytes queued across all clients
 
     # ---------- rooms ----------
     def new_code(self):
@@ -120,7 +125,7 @@ class Relay:
             if code not in self.rooms:
                 return code
 
-    def elect_host(self, room):
+    def elect_host(self, room, skip=None):
         """Pick the longest-connected peer if the current host is gone; announce it."""
         cur = room.seats.get(room.host)
         if cur is not None and cur.client is not None:
@@ -131,7 +136,7 @@ class Relay:
         new = min(live, key=lambda s: (s.connected_at, s.id))
         if new.id != room.host:
             room.host = new.id
-            room.broadcast({"t": "host", "id": new.id})
+            room.broadcast({"t": "host", "id": new.id}, skip=skip)
 
     def seat_client(self, room, seat, client):
         seat.client = client
@@ -144,8 +149,9 @@ class Relay:
                           "host": room.host, "peers": [s.info() for s in room.seats.values()]})
 
     def do_create(self, client, m):
-        if len(self.rooms) >= MAX_ROOMS:
-            return client.error("full")
+        if len(self.rooms) >= MAX_ROOMS or client.creates >= MAX_CREATES:
+            return client.refuse("full")
+        client.creates += 1
         room = Room(self.new_code())
         self.rooms[room.code] = room
         seat = Seat(room.next_id, clean_name(m.get("name")), clean_color(m.get("color")))
@@ -160,7 +166,7 @@ class Relay:
         code = m.get("room")
         room = self.rooms.get(code.strip().upper()) if isinstance(code, str) else None
         if room is None:
-            return client.error("no_room")
+            return client.refuse("no_room")
         token = m.get("token")
         seat = None
         if isinstance(token, str) and token:
@@ -176,14 +182,15 @@ class Relay:
             self.seat_client(room, seat, client)
         else:
             if room.locked:
-                return client.error("locked")
+                return client.refuse("locked")
             if len(room.seats) >= ROOM_SIZE:
-                return client.error("full")
+                return client.refuse("full")
             seat = Seat(room.next_id, clean_name(m.get("name")), clean_color(m.get("color")))
             room.next_id += 1
             room.seats[seat.id] = seat
             self.seat_client(room, seat, client)
-        self.elect_host(room)
+        # the joiner learns the host from welcome; only the others get a `host` message
+        self.elect_host(room, skip=seat)
         self.welcome(room, seat)
         room.broadcast({"t": "peer_join", "peer": seat.info()}, skip=seat)
 
@@ -337,8 +344,11 @@ class Client:
         self.writer = writer
         self.room = None
         self.seat = None
-        self.queue = asyncio.Queue(SEND_QUEUE)
+        self.queue = asyncio.Queue()
+        self.qbytes = 0  # bytes queued for this client, bounded by SEND_QUEUE_BYTES
         self.closing = False
+        self.fails = 0
+        self.creates = 0
         self.last_rx = self.last_ping = time.monotonic()
         self.tokens = BURST
         self.tok_at = time.monotonic()
@@ -350,12 +360,36 @@ class Client:
     def queue_raw(self, frame):
         if self.closing:
             return
+        n = len(frame) if frame else 0
+        if self.qbytes + n > SEND_QUEUE_BYTES or self.relay.qbytes + n > GLOBAL_QUEUE_BYTES:
+            self.drop()  # slow client (or server-wide backlog): drop it
+            return
+        self.qbytes += n
+        self.relay.qbytes += n
+        self.queue.put_nowait(frame)
+
+    def drop(self):
+        self.closing = True
+        self.writer_task.cancel()
         try:
-            self.queue.put_nowait(frame)
-        except asyncio.QueueFull:  # slow client: drop it
-            self.closing = True
-            self.writer_task.cancel()
             self.writer.transport.abort()
+        except Exception:
+            pass
+        self.release()
+
+    def release(self):
+        """Return this client's queued bytes to the global budget."""
+        self.relay.qbytes -= self.qbytes
+        self.qbytes = 0
+        while not self.queue.empty():
+            self.queue.get_nowait()
+
+    def refuse(self, code):
+        """A refused create/join; too many of them looks like code guessing."""
+        self.error(code)
+        self.fails += 1
+        if self.fails >= MAX_FAILS:
+            self.close(1008)
 
     def send_text(self, s):
         self.queue_raw(encode_frame(0x1, s.encode()))
@@ -379,6 +413,8 @@ class Client:
                 frame = await self.queue.get()
                 if frame is None:
                     break
+                self.qbytes -= len(frame)
+                self.relay.qbytes -= len(frame)
                 self.writer.write(frame)
                 await asyncio.wait_for(self.writer.drain(), WRITE_TIMEOUT)
             self.closing = True
@@ -395,16 +431,13 @@ class Client:
     async def shutdown(self):
         """Let queued frames (e.g. a close frame) flush for up to 2 s, then drop the socket."""
         self.closing = True
-        if self.writer_task.done():
-            return
-        try:
+        if not self.writer_task.done():
             self.queue.put_nowait(None)
-        except asyncio.QueueFull:
-            self.writer_task.cancel()
-        try:
-            await asyncio.wait_for(asyncio.shield(self.writer_task), 2)
-        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
-            self.writer_task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(self.writer_task), 2)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                self.writer_task.cancel()
+        self.release()
 
     # ----- incoming -----
     def allow(self):
@@ -444,17 +477,21 @@ class Client:
         return bool(fin), op, data, n
 
     async def run(self):
-        msg, msg_len, msg_op = [], 0, None
+        msg, msg_len, msg_op, frags, msg_ok = [], 0, None, 0, True
         try:
             while not self.closing:
                 fin, op, data, n = await self.read_frame()
                 self.last_rx = time.monotonic()
+                ok = self.allow()  # every frame, control and continuation included, costs a token
+                if self.closing:
+                    return
                 if op == 0x8:
                     self.close(struct.unpack("!H", data[:2])[0] if len(data) >= 2 and
                                struct.unpack("!H", data[:2])[0] in (1000, 1001) else 1000)
                     return
                 if op == 0x9:
-                    self.queue_raw(encode_frame(0xA, data))
+                    if ok:
+                        self.queue_raw(encode_frame(0xA, data))
                     continue
                 if op == 0xA:
                     continue
@@ -463,23 +500,27 @@ class Client:
                 if op == 0x1:
                     if msg_op is not None:
                         raise ProtocolErr(1002)
-                    msg, msg_len, msg_op = [], 0, 0x1
+                    msg, msg_len, msg_op, frags, msg_ok = [], 0, 0x1, 0, True
                 elif op == 0x0:
                     if msg_op is None:
                         raise ProtocolErr(1002)
                 else:
                     raise ProtocolErr(1002)
+                frags += 1
+                if frags > MAX_FRAGMENTS:
+                    raise ProtocolErr(1009)
+                msg_ok = msg_ok and ok
                 msg_len += n
-                if msg_len <= MAX_FRAME:
+                if data and msg_len <= MAX_FRAME:
                     msg.append(data)
                 if not fin:
                     if msg_len > MAX_DISCARD:
                         raise ProtocolErr(1009)
                     continue
-                payload, total = b"".join(msg), msg_len
-                msg, msg_len, msg_op = [], 0, None
-                if not self.allow() or total > MAX_FRAME:
-                    continue  # over the rate or size limit: drop the frame
+                payload, total, good = b"".join(msg), msg_len, msg_ok
+                msg, msg_len, msg_op, frags, msg_ok = [], 0, None, 0, True
+                if not good or total > MAX_FRAME:
+                    continue  # over the rate or size limit: drop the message
                 self.on_text(payload)
         except ProtocolErr as e:
             self.close(e.code)

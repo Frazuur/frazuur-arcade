@@ -12,6 +12,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 MemoryMax=128M
+LimitNOFILE=4096
 
 [Install]
 WantedBy=multi-user.target
