@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arcade Stats</title>
+<link href="https://fonts.googleapis.com/css2?family=Chewy&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d1220;--bg2:#2a1a2e;--ink:#fff4ea;--muted:#d9c3cf;--gold:#f2c230;--pink:#f0a3bd;--line:rgba(255,244,234,.12);--heat:242,194,48}
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg);scrollbar-color:#5a3a5e var(--bg)}
+body{background:var(--bg);color:var(--ink);font-family:Nunito,system-ui,sans-serif;line-height:1.5;padding:28px 16px 56px}
+::selection{background:var(--pink);color:var(--bg)}
+main{max-width:1080px;margin:0 auto}
+h1{font-family:Chewy,cursive;font-weight:400;font-size:clamp(44px,8vw,80px);line-height:.95;color:var(--gold);text-shadow:0 5px 0 #8a5a10,0 14px 32px rgba(0,0,0,.5)}
+.lede{margin-top:16px;font-size:clamp(18px,2.6vw,22px);max-width:52ch;color:var(--muted)}
+.lede b{color:var(--ink);font-weight:800}
+.when{margin-top:6px;font-size:14px;color:var(--muted)}
+section{margin-top:44px}
+h2{font-family:Chewy,cursive;font-weight:400;font-size:clamp(26px,4.4vw,34px);line-height:1.05;margin-bottom:4px}
+.note{color:var(--muted);font-size:15px;margin-bottom:14px;max-width:62ch}
+.panel{background:var(--bg2);border-radius:22px;padding:18px;box-shadow:0 2px 0 var(--line) inset,0 16px 40px rgba(0,0,0,.3)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:22px 32px}
+svg text{font-family:Nunito,system-ui,sans-serif;fill:var(--muted);font-size:11px}
+.key{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-top:10px}
+.key i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-1px}
+.bars{display:grid;gap:10px}
+.bar{display:grid;grid-template-columns:minmax(80px,9ch) 1fr auto;gap:12px;align-items:center;font-size:15px}
+.bar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .t{height:14px;border-radius:7px;background:rgba(255,244,234,.06);overflow:hidden}
+.bar .t i{display:block;height:100%;border-radius:7px;background:var(--gold)}
+.bar b{font-variant-numeric:tabular-nums;font-weight:800;min-width:3ch;text-align:right}
+.game-name{font-family:Chewy,cursive;font-size:22px;font-weight:400}
+.sub{font-size:13px;color:var(--muted);grid-column:2/4;margin-top:-6px}
+.dev h3{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pink);margin:14px 0 8px}
+.dev h3:first-child{margin-top:0}
+.dev .t i{background:var(--pink)}
+#games .bar{grid-template-columns:minmax(0,13ch) 1fr auto}
+.heat{display:grid;grid-template-columns:34px repeat(24,minmax(0,1fr));gap:3px;font-size:11px;color:var(--muted)}
+.heat div{aspect-ratio:1;border-radius:4px;background:rgba(255,244,234,.05)}
+.heat span{display:flex;align-items:center}
+.heat .h{text-align:center;display:block}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pink);text-align:left;padding:0 12px 8px 0;white-space:nowrap}
+td{padding:9px 12px 9px 0;border-top:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td.name{font-weight:800;white-space:normal;min-width:110px}
+td.name small{display:block;font-weight:500;color:var(--muted)}
+code{font-family:ui-monospace,monospace;font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);padding:12px 0}
+footer{margin-top:48px;color:var(--muted);font-size:14px;text-align:center}
+@media (max-width:520px){.heat{grid-template-columns:26px repeat(24,minmax(0,1fr));gap:2px;font-size:9px}#games .bar{grid-template-columns:1fr auto}#games .bar .t{grid-column:1/3;grid-row:2}#games .sub{grid-column:1/3}.heat .h:nth-child(odd){visibility:hidden}.panel{padding:14px;border-radius:18px}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Arcade stats</h1>
+  <p class="lede" id="lede"></p>
+  <p class="when" id="when"></p>
+
+  <section>
+    <h2>Who came by</h2>
+    <p class="note">People per day. Gold is someone new to the arcade that day, pink is someone who had been before.</p>
+    <div class="panel"><div id="daily"></div>
+      <div class="key"><span><i style="background:var(--gold)"></i>New</span><span><i style="background:var(--pink)"></i>Returning</span></div></div>
+  </section>
+
+  <section class="two">
+    <div>
+      <h2>What they play</h2>
+      <p class="note">Games started, with play time and the best score.</p>
+      <div class="panel bars" id="games"></div>
+    </div>
+    <div>
+      <h2>On what</h2>
+      <p class="note">Different people per kind of device, browser and system.</p>
+      <div class="panel dev" id="devices"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>When people play</h2>
+    <p class="note">Visits and games started, by weekday and hour. Brighter is busier.</p>
+    <div class="panel"><div class="heat" id="heat"></div></div>
+  </section>
+
+  <section>
+    <h2>Players</h2>
+    <p class="note">One row per browser. The nickname is whatever they typed; the ID is the random one kept on their device.</p>
+    <div class="panel scroll"><table id="players"></table></div>
+  </section>
+
+  <section>
+    <h2>Recent visits</h2>
+    <p class="note">The latest sessions, newest first. A session is one stay in a tab, ending after half an hour away.</p>
+    <div class="panel scroll"><table id="sessions"></table></div>
+  </section>
+
+  <footer>Made from the arcade's own counts: a random ID per device and a nickname, nothing else.</footer>
+</main>
+<script>
+const DATA=/*__DATA__*/null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const GAMES={plop:'Plop Catcher',splat:'Splat!',site:'Launcher'};
+const gname=g=>GAMES[g]||g;
+const n=v=>(v||0).toLocaleString();
+const dur=ms=>{const m=Math.round((ms||0)/60000);return m<60?m+' min':(m/60).toFixed(m<600?1:0)+' h'};
+const when=s=>s?s.replace('T',' ').slice(0,16):'';
+const plural=(v,one,many)=>n(v)+' '+(v===1?one:many);
+function render(D){
+  if(!D){$('lede').textContent='No data in this page. Run ./stats.sh to make it.';return}
+  const T=D.totals;
+  $('lede').innerHTML=T.ids?`In the last ${D.days} days, <b>${plural(T.ids,'person','people')}</b> came by in <b>${plural(T.sessions,'visit','visits')}</b> and started <b>${plural(T.plays,'game','games')}</b>, playing for <b>${dur(T.play_ms)}</b> in all. <b>${n(T.new_ids)}</b> of them were new, and <b>${n(T.named)}</b> typed a nickname.`:`Nobody has come by in the last ${D.days} days yet.`;
+  $('when').textContent=`Made ${when(D.generated)} (${D.tz}). ${plural(T.ids_ever,'browser','browsers')} seen since counting began.`;
+  daily(D.daily);games(D.games);devices(D.devices);heat(D.heat);players(D.players);sessions(D.sessions)}
+function daily(days){
+  const W=Math.max(300,$('daily').clientWidth||1000),H=Math.min(220,Math.max(160,W*.4)),pad=28,max=Math.max(1,...days.map(d=>d.users)),bw=(W-pad)/days.length;
+  const y=v=>H-20-(H-34)*v/max;let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="People per day">`;
+  const step=max<=5?1:Math.ceil(max/4);
+  for(let v=0;v<=max;v+=step)s+=`<line x1="${pad}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,244,234,.08)"/><text x="${pad-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`;
+  days.forEach((d,i)=>{const w=Math.max(1,Math.min(36,bw*.7)),x=pad+i*bw+(bw-w)/2;
+    if(d.returning)s+=`<rect x="${x}" y="${y(d.users)}" width="${w}" height="${y(0)-y(d.returning)}" rx="2" fill="#f0a3bd"><title>${d.day}: ${d.users} people, ${d.new} new, ${d.plays} games</title></rect>`;
+    if(d.new)s+=`<rect x="${x}" y="${y(d.new)}" width="${w}" height="${y(0)-y(d.new)}" rx="2" fill="#f2c230"><title>${d.day}: ${d.users} people, ${d.new} new, ${d.plays} games</title></rect>`;
+    if(i%Math.ceil(days.length/8)===0||i===days.length-1)s+=`<text x="${x+w/2}" y="${H-4}" text-anchor="middle">${d.day.slice(5).replace('-','/')}</text>`});
+  $('daily').innerHTML=s+'</svg>'}
+function games(gs){
+  if(!gs.length){$('games').innerHTML='<p class="empty">No games played yet.</p>';return}
+  const max=Math.max(1,...gs.map(g=>g.plays));
+  $('games').innerHTML=gs.map(g=>{const modes=Object.entries(g.modes||{}).map(([m,c])=>`${c} ${m==='pooff'?'Poo Off':m}`).join(', ');
+    return `<div class="bar"><span class="game-name">${esc(gname(g.game))}</span><div class="t"><i style="width:${100*g.plays/max}%"></i></div><b>${n(g.plays)}</b>
+    <div class="sub">${plural(g.players,'player','players')} · ${dur(g.play_ms)} played · ${n(g.finished)} finished${g.quit?`, ${n(g.quit)} left early`:''}${g.best!=null?` · best ${n(g.best)}`:''}${modes?` · ${esc(modes)}`:''}</div></div>`}).join('')}
+function devices(d){
+  const block=(title,m)=>{const e=Object.entries(m||{}),max=Math.max(1,...e.map(x=>x[1]));
+    return `<h3>${title}</h3><div class="bars">`+(e.length?e.map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><div class="t"><i style="width:${100*v/max}%"></i></div><b>${v}</b></div>`).join(''):'<p class="empty">Nothing yet.</p>')+'</div>'};
+  $('devices').innerHTML=block('Device',d.dev)+block('Browser',d.br)+block('System',d.os)}
+function heat(h){
+  const max=Math.max(1,...h.flat()),days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let s='<span></span>';for(let i=0;i<24;i++)s+=`<span class="h">${i}</span>`;
+  h.forEach((row,d)=>{s+=`<span>${days[d]}</span>`;row.forEach((v,i)=>{s+=`<div title="${days[d]} ${i}:00, ${v}" style="${v?`background:rgba(var(--heat),${(.15+.85*v/max).toFixed(2)})`:''}"></div>`})});
+  $('heat').innerHTML=s}
+function perGame(o){return Object.entries(o||{}).map(([g,v])=>`${esc(gname(g))} ${n(v)}`).join('<br>')||'·'}
+function players(ps){
+  if(!ps.length){$('players').innerHTML='<tr><td class="empty">No players yet.</td></tr>';return}
+  $('players').innerHTML='<tr><th>Player</th><th>Games</th><th>Best</th><th>Visits</th><th>Played</th><th>First seen</th><th>Last seen</th><th>Device</th></tr>'+
+    ps.map(p=>`<tr><td class="name">${p.nicks.length?esc(p.nicks[0]):'<i>no name</i>'}<small>${p.nicks.length>1?'also '+esc(p.nicks.slice(1).join(', '))+' · ':''}<code>${esc(p.id)}</code></small></td>
+    <td>${perGame(p.plays)}</td><td>${perGame(p.best)}</td><td>${n(p.sessions)}</td><td>${dur(p.play_ms)}</td><td>${when(p.first)}</td><td>${when(p.last)}</td><td>${esc(p.device)}</td></tr>`).join('')}
+function sessions(ss){
+  if(!ss.length){$('sessions').innerHTML='<tr><td class="empty">No visits yet.</td></tr>';return}
+  $('sessions').innerHTML='<tr><th>Started</th><th>Who</th><th>Stayed</th><th>Games</th><th>Best</th><th>Device</th></tr>'+
+    ss.map(s=>`<tr><td>${when(s.start)}</td><td class="name">${s.nick?esc(s.nick):'<i>no name</i>'}<small><code>${esc(s.player)}</code></small></td><td>${s.minutes<1?'under a minute':Math.round(s.minutes)+' min'}</td><td>${perGame(s.plays)}</td><td>${perGame(s.best)}</td><td>${esc(s.device)}</td></tr>`).join('')}
+render(DATA);
+</script>
+</body>
+</html>
