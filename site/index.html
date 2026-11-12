@@ -118,11 +118,35 @@ html.meggy ::selection{background:#ff5c93;color:#fff}
     </form>
   </section>
 
-  <footer>Made for friends, for fun.</footer>
+  <footer>Made for friends, for fun.<br><small>The arcade counts plays using a random ID kept on this device and the nickname you type. Nothing else.</small></footer>
 </main>
 <script>
 // app key for the scores server: a speed bump against scripts, not a secret (rebuilt at runtime)
 const PLOP_KEY=((m,b)=>b.map((v,i)=>String.fromCharCode(v^m[i])).join(''))([195,127,177,221,41,164,125,86,98,73,149,2,103,73,70,105,104,245,194,155,170,150,174,179,12,166,243,250,177,20,110,6],[243,72,134,190,29,198,78,52,85,123,165,50,95,121,117,94,9,205,163,248,206,243,152,138,109,147,145,155,211,45,90,52]);
+/* Usage counts (see the note on frazuur.github.io): a random id for this browser, a tab session id and the
+   nickname you typed. No fingerprinting. The same snippet is in every arcade page, and it can never break a game. */
+function arcadeTracker(game,ver,url,key){const nop={ev(){},flush(){},onhide:null};try{
+ if(navigator.globalPrivacyControl===true||navigator.doNotTrack==='1')return nop;
+ const rid=()=>{try{return crypto.randomUUID().replace(/-/g,'')}catch(e){let s='';for(let i=0;i<32;i++)s+=(Math.random()*16|0).toString(16);return s}};
+ const ls=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+ let id=ls('arcadeId');if(!/^[0-9a-f]{32}$/.test(id||'')){id=rid();try{localStorage.setItem('arcadeId',id)}catch(e){}}
+ let sid=null;try{const s=JSON.parse(sessionStorage.getItem('arcadeSess')||'null');if(s&&Date.now()-s.at<18e5&&/^[0-9a-f]{32}$/.test(s.id))sid=s.id}catch(e){}
+ sid=sid||rid();
+ const touch=()=>{try{sessionStorage.setItem('arcadeSess',JSON.stringify({id:sid,at:Date.now()}))}catch(e){}};
+ const nick=()=>{let n=ls('plopName');if(!n)try{n=JSON.parse(ls('splat.name')||'""')}catch(e){}return String(n||'').slice(0,16)};
+ const q=[],T={onhide:null};let tm=0;
+ T.flush=()=>{try{clearTimeout(tm);while(q.length){const b=JSON.stringify({k:key,id,sid,ev:q.splice(0,50)});let ok=false;
+   try{ok=!!navigator.sendBeacon&&navigator.sendBeacon(url,new Blob([b],{type:'text/plain'}))}catch(e){}
+   if(!ok)fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:b,keepalive:true}).catch(()=>{})}}catch(e){}};
+ T.ev=(t,o)=>{try{touch();q.push(Object.assign({t,g:game,v:ver,n:nick(),at:Date.now()},o||{}));clearTimeout(tm);tm=setTimeout(T.flush,q.length>=50?0:15000)}catch(e){}};
+ addEventListener('pagehide',()=>{try{T.onhide&&T.onhide()}catch(e){}T.flush()});
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')T.flush()});
+ touch();return T}catch(e){return nop}}
+const ARC=arcadeTracker('site','1',((['localhost','127.0.0.1',''].includes(location.hostname)&&new URLSearchParams(location.search).get('api'))||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/events',PLOP_KEY);
+ARC.ev('visit');
+// which game card was tapped: logged as {t:'card', g:<game>} (the tracker's game is 'site', so pass g)
+document.querySelectorAll('a.game').forEach(a=>a.addEventListener('click',()=>{const g=/splat/.test(a.getAttribute('href'))?'splat':'plop';ARC.ev('card',{g});ARC.flush()}));
+
 // live top three from the Plop Catcher leaderboard; the card works fine without it
 fetch('https://theshow-vps.pleco-rooster.ts.net:8443/scores',{headers:{'X-Plop-Key':PLOP_KEY}}).then(r=>r.json()).then(rows=>{
   if(!Array.isArray(rows)||!rows.length)return;

@@ -19,6 +19,25 @@ Dean's silly browser games for friends and family. Private source repo
   leaderboard; `POST /ideas` saves game ideas (never served back; read them
   with `ssh theshow-vps 'sudo STATE_DIRECTORY=/var/lib/private/plop-scores python3 /opt/plop-scores/plop_scores.py ideas'`).
 
+## Usage counts
+
+- Every page carries the same inline `arcadeTracker` snippet: a random ID per
+  browser (`localStorage.arcadeId`), a tab session ID (`sessionStorage.arcadeSess`,
+  new after 30 min away) and the nickname typed (`plopName` / `splat.name`). No
+  fingerprinting; it sends nothing when Do Not Track or GPC is on. Events
+  (visit, card, game_start, game_end, splat_host, splat_join) go by
+  `sendBeacon` (text/plain, app key in the body as `k`) to `POST /events`, at
+  most 50 per batch. The server stores its own time plus a coarse device class
+  (phone/tablet/desktop, browser, OS) from the User-Agent, never the UA or IP,
+  and prunes events older than 400 days. Keep the snippet identical in every
+  page, and tracking failures must never break a game.
+- `plop_scores.py stats [--days N] [--tz Area/City]` prints the aggregates as JSON.
+- `./stats.sh [--days N] [--open]` runs that over ssh and writes the dashboard
+  (template `stats/dashboard.html`) to `~/scratch/arcade-stats/index.html`.
+- Tests: `python3 server/test_plop_events.py`.
+- Rollout: `./deploy.sh server` first (the old server 404s `/events`, harmlessly),
+  then `plop`, `splat` and `site`.
+
 ## Deploying
 
 GitHub Pages serves from two public repos (free plan), so `./deploy.sh`

@@ -240,6 +240,31 @@ import * as THREE from 'three';
 const VERSION='1.0';
 const $=id=>document.getElementById(id);
 const QS=new URLSearchParams(location.search);
+/* Usage counts (see the note on frazuur.github.io): a random id for this browser, a tab session id and the
+   nickname you typed. No fingerprinting. The same snippet is in every arcade page, and it can never break a game. */
+function arcadeTracker(game,ver,url,key){const nop={ev(){},flush(){},onhide:null};try{
+ if(navigator.globalPrivacyControl===true||navigator.doNotTrack==='1')return nop;
+ const rid=()=>{try{return crypto.randomUUID().replace(/-/g,'')}catch(e){let s='';for(let i=0;i<32;i++)s+=(Math.random()*16|0).toString(16);return s}};
+ const ls=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+ let id=ls('arcadeId');if(!/^[0-9a-f]{32}$/.test(id||'')){id=rid();try{localStorage.setItem('arcadeId',id)}catch(e){}}
+ let sid=null;try{const s=JSON.parse(sessionStorage.getItem('arcadeSess')||'null');if(s&&Date.now()-s.at<18e5&&/^[0-9a-f]{32}$/.test(s.id))sid=s.id}catch(e){}
+ sid=sid||rid();
+ const touch=()=>{try{sessionStorage.setItem('arcadeSess',JSON.stringify({id:sid,at:Date.now()}))}catch(e){}};
+ const nick=()=>{let n=ls('plopName');if(!n)try{n=JSON.parse(ls('splat.name')||'""')}catch(e){}return String(n||'').slice(0,16)};
+ const q=[],T={onhide:null};let tm=0;
+ T.flush=()=>{try{clearTimeout(tm);while(q.length){const b=JSON.stringify({k:key,id,sid,ev:q.splice(0,50)});let ok=false;
+   try{ok=!!navigator.sendBeacon&&navigator.sendBeacon(url,new Blob([b],{type:'text/plain'}))}catch(e){}
+   if(!ok)fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:b,keepalive:true}).catch(()=>{})}}catch(e){}};
+ T.ev=(t,o)=>{try{touch();q.push(Object.assign({t,g:game,v:ver,n:nick(),at:Date.now()},o||{}));clearTimeout(tm);tm=setTimeout(T.flush,q.length>=50?0:15000)}catch(e){}};
+ addEventListener('pagehide',()=>{try{T.onhide&&T.onhide()}catch(e){}T.flush()});
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')T.flush()});
+ touch();return T}catch(e){return nop}}
+// app key for the scores server: a speed bump against scripts, not a secret (Splat only sends usage counts there)
+const PLOP_KEY=((m,b)=>b.map((v,i)=>String.fromCharCode(v^m[i])).join(''))([195,127,177,221,41,164,125,86,98,73,149,2,103,73,70,105,104,245,194,155,170,150,174,179,12,166,243,250,177,20,110,6],[243,72,134,190,29,198,78,52,85,123,165,50,95,121,117,94,9,205,163,248,206,243,152,138,109,147,145,155,211,45,90,52]);
+const ARC=arcadeTracker('splat',VERSION,((['localhost','127.0.0.1',''].includes(location.hostname)&&QS.get('api'))||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/events',PLOP_KEY);ARC.ev('visit');
+let arcRun=0,arcMode='solo';
+function arcEnd(o){if(!arcRun)return;ARC.ev('game_end',Object.assign({m:arcMode,ms:Math.round(performance.now()-arcRun)},o));arcRun=0;ARC.flush()}
+ARC.onhide=()=>arcEnd({quit:true});
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store={get(k,d){try{const v=localStorage.getItem('splat.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('splat.'+k,JSON.stringify(v))}catch(e){}}};
 const sess={get(){try{return JSON.parse(sessionStorage.getItem('splat.sess')||'null')}catch(e){return null}},set(v){try{v?sessionStorage.setItem('splat.sess',JSON.stringify(v)):sessionStorage.removeItem('splat.sess')}catch(e){}}};
@@ -786,6 +811,7 @@ function showOver(){overShown=true;const aw=view.aw||[],kids=view.kids||[];let w
  const ol=$('awards');ol.textContent='';const seats=SEATS();
  for(const [title,seat,text] of aw){const li=document.createElement('li');li.innerHTML='<i></i><b></b><span></span>';li.querySelector('i').style.background=(seats[seat]||{}).color||'#fff';li.querySelector('b').textContent=title+': '+nameOf(seat);li.querySelector('span').textContent=text;ol.appendChild(li)}
  const host=amHost();$('bAgain').hidden=!host;$('owait').hidden=host;
+ arcEnd({s:((kids[mySeat]||{}).wins|0),r:view.round|0,won:w===mySeat,p:kids.length});
  show('over');sfx(w===mySeat?'win':'lose')}
 
 /* ---------- network (see PROTOCOL.md for the relay; game payloads below) ----------
@@ -833,6 +859,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseNet()
 addEventListener('online',()=>{if(Net.room&&!Net.ws)reconnect()});
 function onRelay(m){
  if(m.t==='welcome'){
+  if(Net.room!==m.room)ARC.ev(m.you===m.host?'splat_host':'splat_join',{m:'online',p:(m.peers||[]).length});
   const wasHost=amHost();Net.room=m.room;Net.me=m.you;Net.token=m.token;Net.host=m.host;Net.retry=0;
   Net.peers=new Map(m.peers.map(p=>[p.id,{...p,on:p.on!==false}]));
   sess.set({room:m.room,token:m.token});
@@ -922,7 +949,7 @@ function drawPrefs(){[...$('swatches').children].forEach((b,i)=>b.setAttribute('
 function previewArena(){const cs=COLORS.filter(c=>c!==prefs.color);buildArena([{color:prefs.color,hat:prefs.hat,name:'you'},{color:cs[2],hat:'beanie',name:''},{color:cs[4],hat:'spiky',name:''},{color:cs[0],hat:'bunches',name:''}],0)}
 const SCREENS=['title','join','lobby','over'];
 function show(name){SCREENS.forEach(s=>$(s).hidden=s!==name);$('hud').hidden=mode!=='game'||name==='over';if(name==='title'||name==='join'||(name==='lobby'&&mode!=='game')){if(mode==='game'){mode='menu'}previewArena()}}
-function enterGame(){mode='game';overShown=false;lastHud='';lastFoodKey='';ctl.armed=false;ptrs.clear();SCREENS.forEach(s=>$(s).hidden=true);$('hud').hidden=false;fitCamera()}
+function enterGame(){arcEnd({quit:true});arcRun=performance.now();arcMode=solo?'solo':'online';ARC.ev('game_start',{m:arcMode,p:S?S.kids.length:undefined});mode='game';overShown=false;lastHud='';lastFoodKey='';ctl.armed=false;ptrs.clear();SCREENS.forEach(s=>$(s).hidden=true);$('hud').hidden=false;fitCamera()}
 function toLobby(){mode='lobby';S=solo?S:null;SN=[];R=null;arenaSig='';clearVis();show('lobby');renderLobby()}
 function botSeats(n,used){const cs=COLORS.filter(c=>!used.includes(c)),names=[...BOT_NAMES].sort(()=>Math.random()-.5);return Array.from({length:n},(_,i)=>({pid:0,name:names[i],color:cs[i%cs.length],hat:HATS[(i*2+1)%HATS.length][0],bp:BOTP[i%3],away:false}))}
 function startMatch(){
@@ -939,7 +966,7 @@ function seatTimedOut(code){const room=Net.room||(Net.want&&Net.want.room);leave
  if(code==='no_room'){toast('That fight has ended.',3);return}
  toast('You were away too long, so your seat was given up.',4);
  if(room){$('codeIn').value=room;const b=$('bRejoin');b.hidden=false;b.onclick=()=>{b.hidden=true;toast('Joining '+room+'…',1.5);joinCode(room)}}}
-function leaveAll(){Net.closing=true;if(Net.ws){send({t:'leave'});try{Net.ws.close()}catch(e){}}Net.ws=null;Net.room=null;Net.host=0;sess.set(null);S=null;R=null;SN=[];solo=false;mode='menu';clearTimeout(rcTimer);rcTimer=0;
+function leaveAll(){arcEnd({quit:true});Net.closing=true;if(Net.ws){send({t:'leave'});try{Net.ws.close()}catch(e){}}Net.ws=null;Net.room=null;Net.host=0;sess.set(null);S=null;R=null;SN=[];solo=false;mode='menu';clearTimeout(rcTimer);rcTimer=0;
  try{const u=new URL(location.href);u.searchParams.delete('room');history.replaceState(null,'',u)}catch(e){}show('title')}
 function renderLobby(){
  const host=amHost();$('ltitle').textContent=solo?'Play with bots':host?'Your fight':'Waiting to fight';
