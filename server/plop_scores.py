@@ -66,6 +66,7 @@ def add_idea(d):
 # Each browser sends a random id (localStorage arcadeId), a per-tab session id and its nickname.
 # We add the receive time and a coarse device class from the User-Agent. No raw UA, no IP is stored.
 EV_MAX, EV_KEEP_S = 50, 400 * 86400
+EV_DAY_ALL, EV_DAY_ID = 20000, 2000  # most events stored per rolling day: everyone, one arcade id
 EV_TYPES = {"visit", "card", "game_start", "game_end", "splat_join", "splat_host"}
 EV_GAMES = {"site", "plop", "splat"}
 EV_MODES = {"solo", "online", "pooff"}
@@ -144,6 +145,11 @@ def add_events(d, ua, now=None):
     if not rows:
         return None
     with lock, db() as con:
+        # daily caps so a script with the (public) app key can't fill the disk
+        day = int(now) - 86400
+        if con.execute("select count(*) from events where at > ?", (day,)).fetchone()[0] >= EV_DAY_ALL or \
+           con.execute("select count(*) from events where aid = ? and at > ?", (aid, day)).fetchone()[0] >= EV_DAY_ID:
+            return 0
         con.executemany(
             "insert into events(at, aid, sid, type, game, ver, nick, dur, score, round, cat, extra, dev, br, os)"
             " values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(int(now), aid, sid) + r + dev for r in rows])
@@ -265,7 +271,7 @@ ROUTES = {("GET", "/scores"), ("POST", "/scores"), ("POST", "/ideas"), ("POST", 
 # and also limited per player inside po_handle's caller.
 LIMITS = {"tick": (45.0, 60.0), "tickp": (12.0, 20.0), "pooff": (2.0, 6.0),
           "post_scores": (6 / 60, 6.0), "ideas": (5 / 3600, 5.0), "get_scores": (2.0, 4.0),
-          "events": (0.5, 30.0)}
+          "events": (0.3, 20.0)}
 buckets, blk = {}, threading.Lock()
 last_prune = [time.time()]
 

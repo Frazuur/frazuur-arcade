@@ -256,7 +256,7 @@ function arcadeTracker(game,ver,url,key){const nop={ev(){},flush(){},onhide:null
    try{ok=!!navigator.sendBeacon&&navigator.sendBeacon(url,new Blob([b],{type:'text/plain'}))}catch(e){}
    if(!ok)fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:b,keepalive:true}).catch(()=>{})}}catch(e){}};
  T.ev=(t,o)=>{try{touch();q.push(Object.assign({t,g:game,v:ver,n:nick(),at:Date.now()},o||{}));clearTimeout(tm);tm=setTimeout(T.flush,q.length>=50?0:15000)}catch(e){}};
- addEventListener('pagehide',()=>{try{T.onhide&&T.onhide()}catch(e){}T.flush()});
+ addEventListener('pagehide',ev=>{try{T.onhide&&T.onhide(ev)}catch(e){}T.flush()});
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')T.flush()});
  touch();return T}catch(e){return nop}}
 // app key for the scores server: a speed bump against scripts, not a secret (Splat only sends usage counts there)
@@ -264,7 +264,7 @@ const PLOP_KEY=((m,b)=>b.map((v,i)=>String.fromCharCode(v^m[i])).join(''))([195,
 const ARC=arcadeTracker('splat',VERSION,((['localhost','127.0.0.1',''].includes(location.hostname)&&QS.get('api'))||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/events',PLOP_KEY);ARC.ev('visit');
 let arcRun=0,arcMode='solo';
 function arcEnd(o){if(!arcRun)return;ARC.ev('game_end',Object.assign({m:arcMode,ms:Math.round(performance.now()-arcRun)},o));arcRun=0;ARC.flush()}
-ARC.onhide=()=>arcEnd({quit:true});
+ARC.onhide=ev=>{if(!(ev&&ev.persisted))arcEnd({quit:true})};// bfcache (app switch): the match may resume
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store={get(k,d){try{const v=localStorage.getItem('splat.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('splat.'+k,JSON.stringify(v))}catch(e){}}};
 const sess={get(){try{return JSON.parse(sessionStorage.getItem('splat.sess')||'null')}catch(e){return null}},set(v){try{v?sessionStorage.setItem('splat.sess',JSON.stringify(v)):sessionStorage.removeItem('splat.sess')}catch(e){}}};

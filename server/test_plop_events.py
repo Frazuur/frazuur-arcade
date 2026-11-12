@@ -115,6 +115,20 @@ class Endpoint(Base):
         self.post(batch({"t": "visit", "g": "site"}))
         self.assertEqual(len(self.rows()), 1)
 
+    def test_daily_caps(self):
+        old = P.EV_DAY_ALL, P.EV_DAY_ID
+        P.EV_DAY_ALL, P.EV_DAY_ID = 3, 2
+        try:
+            for _ in range(3):
+                P.add_events(batch({"t": "visit", "g": "site"}), PHONE)
+            self.assertEqual(len(self.rows()), 2)  # per-id cap
+            other = batch({"t": "visit", "g": "site"}, id="b" * 32, sid="c" * 16)
+            for _ in range(3):
+                P.add_events(other, PHONE)
+            self.assertEqual(len(self.rows()), 3)  # global cap
+        finally:
+            P.EV_DAY_ALL, P.EV_DAY_ID = old
+
 
 class Device(unittest.TestCase):
     def test_classes(self):

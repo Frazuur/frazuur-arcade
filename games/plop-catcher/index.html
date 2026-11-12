@@ -1389,14 +1389,14 @@ function arcadeTracker(game,ver,url,key){const nop={ev(){},flush(){},onhide:null
    try{ok=!!navigator.sendBeacon&&navigator.sendBeacon(url,new Blob([b],{type:'text/plain'}))}catch(e){}
    if(!ok)fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:b,keepalive:true}).catch(()=>{})}}catch(e){}};
  T.ev=(t,o)=>{try{touch();q.push(Object.assign({t,g:game,v:ver,n:nick(),at:Date.now()},o||{}));clearTimeout(tm);tm=setTimeout(T.flush,q.length>=50?0:15000)}catch(e){}};
- addEventListener('pagehide',()=>{try{T.onhide&&T.onhide()}catch(e){}T.flush()});
+ addEventListener('pagehide',ev=>{try{T.onhide&&T.onhide(ev)}catch(e){}T.flush()});
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')T.flush()});
  touch();return T}catch(e){return nop}}
 const ARC=arcadeTracker('plop',VERSION,API.replace(/\/scores$/,'')+'/events',PLOP_KEY);ARC.ev('visit');
 let arcRun=0,arcMode='solo';
 function arcStart(m){if(arcRun)arcEnd(true);arcRun=performance.now();arcMode=m;ARC.ev('game_start',{m})}
 function arcEnd(quit){if(!arcRun)return;ARC.ev('game_end',{m:arcMode,ms:Math.round(performance.now()-arcRun),s:score,quit:!!quit});arcRun=0;ARC.flush()}
-ARC.onhide=()=>arcEnd(true);
+ARC.onhide=ev=>{if(!(ev&&ev.persisted))arcEnd(true)};// bfcache (app switch): the run may resume, keep it open
 function showUpdate(){if(!newVer||running||!$('update').classList.contains('hidden'))return;$('upmsg').textContent='Version '+newVer+' is out';$('update').classList.remove('hidden')}
 function checkUpdate(){if(location.protocol==='file:')return;fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.version&&d.version!==VERSION){newVer=d.version;showUpdate()}}).catch(()=>{})}
 $('upgo').onclick=()=>location.reload();

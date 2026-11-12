@@ -139,7 +139,7 @@ function arcadeTracker(game,ver,url,key){const nop={ev(){},flush(){},onhide:null
    try{ok=!!navigator.sendBeacon&&navigator.sendBeacon(url,new Blob([b],{type:'text/plain'}))}catch(e){}
    if(!ok)fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:b,keepalive:true}).catch(()=>{})}}catch(e){}};
  T.ev=(t,o)=>{try{touch();q.push(Object.assign({t,g:game,v:ver,n:nick(),at:Date.now()},o||{}));clearTimeout(tm);tm=setTimeout(T.flush,q.length>=50?0:15000)}catch(e){}};
- addEventListener('pagehide',()=>{try{T.onhide&&T.onhide()}catch(e){}T.flush()});
+ addEventListener('pagehide',ev=>{try{T.onhide&&T.onhide(ev)}catch(e){}T.flush()});
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')T.flush()});
  touch();return T}catch(e){return nop}}
 const ARC=arcadeTracker('site','1',((['localhost','127.0.0.1',''].includes(location.hostname)&&new URLSearchParams(location.search).get('api'))||'https://theshow-vps.pleco-rooster.ts.net:8443')+'/events',PLOP_KEY);
